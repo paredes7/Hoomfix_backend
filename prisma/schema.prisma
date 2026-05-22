@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  CLIENT
+  TECHNICIAN
+  ADMIN
+}
+
+enum Category {
+  PLUMBING
+  ELECTRICITY
+  LOCKSMITH
+  GAS
+  NETWORK
+}
+
+enum TechStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ServiceStatus {
+  SEARCHING
+  ASSIGNED
+  ON_WAY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+}
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  INITIATED
+  ACCEPTED
+  REJECTED
+  ENDED
+  MISSED
+}
+
+enum RechargeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── MODELS ───────────────────────────────────────────────────────────────────
+
+model User {
+  id                   String    @id @default(uuid())
+  name                 String
+  email                String?   @unique
+  phone                String    @unique
+  password             String
+  role                 Role      @default(CLIENT)
+  avatar               String?
+  fcmToken             String?
+  resetPasswordToken   String?
+  resetPasswordExpiry  DateTime?
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  wallet               Wallet?
+  technician           Technician?
+  sentMessages         Message[]       @relation("SentMessages")
+  clientServices       Service[]       @relation("ClientServices")
+}
+
+model Technician {
+  id           String     @id @default(uuid())
+  userId       String     @unique
+  category     Category
+  documentUrl  String?
+  status       TechStatus @default(PENDING)
+  available    Boolean    @default(false)
+  rating       Float      @default(0)
+  totalRatings Int        @default(0)
+  balance      Float      @default(0)
+  latitude     Float?
+  longitude    Float?
+  bio          String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  user         User       @relation(fields: [userId], references: [id])
+  services     Service[]  @relation("TechnicianServices")
+  withdrawals  Withdrawal[]
+}
+
+model Wallet {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  credits   Float      @default(0)
+  createdAt DateTime   @default(now())
+
+  user      User       @relation(fields: [userId], references: [id])
+  recharges Recharge[]
+}
+
+model Recharge {
+  id        String         @id @default(uuid())
+  walletId  String
+  amount    Float
+  credits   Float
+  bonus     Float          @default(0)
+  status    RechargeStatus @default(PENDING)
+  proofUrl  String?
+  createdAt DateTime       @default(now())
+
+  wallet    Wallet         @relation(fields: [walletId], references: [id])
+}
+
+model Withdrawal {
+  id           String   @id @default(uuid())
+  technicianId String
+  amount       Float
+  bankName     String?
+  accountNumber String?
+  status       RechargeStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+
+  technician   Technician @relation(fields: [technicianId], references: [id])
+}
+
+model Service {
+  id           String        @id @default(uuid())
+  clientId     String
+  technicianId String?
+  category     Category
+  description  String
+  address      String
+  latitude     Float
+  longitude    Float
+  status       ServiceStatus @default(SEARCHING)
+  price        Float
+  commission   Float
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  client       User          @relation("ClientServices", fields: [clientId], references: [id])
+  technician   Technician?   @relation("TechnicianServices", fields: [technicianId], references: [id])
+  messages     Message[]
+  calls        Call[]
+  rating       Rating?
+}
+
+model Message {
+  id        String      @id @default(uuid())
+  serviceId String
+  senderId  String
+  content   String
+  type      MessageType @default(TEXT)
+  read      Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  service   Service     @relation(fields: [serviceId], references: [id])
+  sender    User        @relation("SentMessages", fields: [senderId], references: [id])
+}
+
+model Call {
+  id         String     @id @default(uuid())
+  serviceId  String
+  callerId   String
+  receiverId String
+  type       CallType
+  status     CallStatus @default(INITIATED)
+  startedAt  DateTime?
+  endedAt    DateTime?
+  duration   Int?
+  createdAt  DateTime   @default(now())
+
+  service    Service    @relation(fields: [serviceId], references: [id])
+}
+
+model Rating {
+  id        String  @id @default(uuid())
+  serviceId String  @unique
+  score     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  service   Service @relation(fields: [serviceId], references: [id])
+}

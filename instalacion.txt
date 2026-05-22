@@ -1,0 +1,187 @@
+================================================================================
+  HOOMFIX BACKEND — GUÍA DE INSTALACIÓN Y REFERENCIA
+================================================================================
+
+DESCRIPCIÓN
+-----------
+API REST para la app de emergencias del hogar Hoomfix. Conecta clientes con
+técnicos verificados (plomería, electricidad, cerrajería, gas, redes) en tiempo
+real. Incluye autenticación, wallet, chat por WebSocket, llamadas Agora y pagos.
+
+
+CÓMO SE CREÓ EL PROYECTO
+--------------------------
+nest new hoomfix-backend
+# Luego se instalaron dependencias adicionales manualmente (ver abajo)
+
+
+TECNOLOGÍAS PRINCIPALES
+------------------------
+- NestJS 11          → framework principal (Node.js)
+- TypeScript 5       → lenguaje
+- Prisma 7           → ORM (usa prisma.config.ts en vez de url en schema.prisma)
+- PostgreSQL         → base de datos
+- pg + @prisma/adapter-pg → adaptador de driver para Prisma 7
+- Passport + JWT     → autenticación con tokens (7 días de expiración)
+- bcrypt             → hasheo de contraseñas
+- Socket.io          → WebSockets para chat en tiempo real
+- Agora              → llamadas de voz y video (agora-token)
+- Cloudinary         → subida de imágenes y documentos
+- Firebase Admin     → push notifications (FCM)
+- Nodemailer + Handlebars → emails transaccionales (reset de contraseña, bienvenida)
+- Stripe             → pagos con tarjeta
+- Swagger            → documentación de API en /docs
+- class-validator    → validación de DTOs
+- @nestjs/schedule   → tareas programadas (cron)
+- @nestjs/cache-manager → caché en memoria (para intentos de reset de contraseña)
+
+
+ESTRUCTURA DE CARPETAS
+-----------------------
+hoomfix-backend/
+├── prisma/
+│   ├── schema.prisma        ← modelos de base de datos
+│   ├── prisma.service.ts    ← servicio Prisma (usa Pool + PrismaPg)
+│   └── prisma.module.ts     ← módulo global de Prisma
+├── prisma.config.ts         ← configuración de Prisma 7 (DATABASE_URL aquí)
+├── src/
+│   ├── main.ts              ← bootstrap, CORS, Swagger, ValidationPipe, puerto 4000
+│   ├── app.module.ts        ← módulo raíz
+│   ├── auth/                ← registro, login, Google, reset de contraseña
+│   │   ├── dto/             ← DTOs de validación
+│   │   ├── guards/          ← JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard
+│   │   ├── decorators/      ← @CurrentUser, @Roles
+│   │   └── strategies/      ← jwt.strategy.ts
+│   ├── cloudinary/          ← subida de archivos e imágenes
+│   ├── notifications/       ← push notifications Firebase
+│   ├── mail/                ← emails con plantillas Handlebars
+│   │   └── templates/       ← reset-password.hbs, welcome.hbs
+│   └── common/              ← utilidades compartidas (teléfonos, países)
+└── .env                     ← variables de entorno (ver sección abajo)
+
+
+MODELOS DE BASE DE DATOS (schema.prisma)
+-----------------------------------------
+- User          → cliente o técnico, con email/phone únicos
+- Technician    → perfil del técnico (categoría, ubicación, balance, rating)
+- Wallet        → billetera del cliente (créditos)
+- Recharge      → recarga de créditos (con comprobante)
+- Withdrawal    → retiro de saldo del técnico
+- Service       → solicitud de servicio (ciclo: SEARCHING → COMPLETED)
+- Message       → mensajes del chat por servicio
+- Call          → llamadas de voz/video por servicio
+- Rating        → calificación del técnico al finalizar servicio
+
+Enums: Role, Category, TechStatus, ServiceStatus, MessageType, CallType,
+       CallStatus, RechargeStatus
+
+
+VARIABLES DE ENTORNO (.env)
+-----------------------------
+DATABASE_URL=postgresql://usuario:password@host:5432/hoomfix
+JWT_SECRET=tu_secreto_jwt
+FRONTEND_URL=http://localhost:3000
+
+CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
+
+FIREBASE_SERVICE_ACCOUNT_BASE64=base64_del_json_de_firebase
+
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=tu@gmail.com
+MAIL_PASS=tu_app_password
+MAIL_FROM="Hoomfix <noreply@hoomfix.com>"
+MAIL_SECURE=false
+
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+GOOGLE_ANDROID_CLIENT_ID=...
+GOOGLE_IOS_CLIENT_ID=...
+GOOGLE_WEB_CLIENT_ID=...
+
+RESET_PASSWORD_CODE_SECRET=secreto_para_hash_de_codigos
+
+
+INSTALACIÓN DESDE CERO
+------------------------
+# 1. Instalar dependencias
+npm install
+
+# 2. Generar el cliente de Prisma (obligatorio antes de correr)
+npx prisma generate
+
+# 3. Llenar el .env con DATABASE_URL válido
+
+# 4. Crear las tablas en la base de datos
+npx prisma migrate dev --name init
+
+# 5. Correr en desarrollo
+npm run start:dev
+
+# 6. Ver documentación de la API
+Abrir http://localhost:4000/docs
+
+
+COMANDOS ÚTILES
+----------------
+npm run start:dev          → desarrollo con hot reload
+npm run build              → compilar a dist/
+npm run start:prod         → producción (requiere build previo)
+npx prisma studio          → GUI visual de la base de datos
+npx prisma migrate dev     → crear nueva migración tras cambios en schema
+npx prisma generate        → regenerar cliente tras cambios en schema
+npx prisma migrate reset   → borrar todo y volver a migrar (CUIDADO en prod)
+
+
+ENDPOINTS DE AUTH (base: /auth)
+---------------------------------
+POST /auth/register                → registrar cliente
+POST /auth/register/technician     → registrar técnico
+POST /auth/login                   → login con email + contraseña
+POST /auth/google                  → login con Google (idToken)
+POST /auth/forgot-password         → enviar código de recuperación por email
+POST /auth/reset-password          → cambiar contraseña con el código
+
+
+AGORA — LLAMADAS DE VOZ Y VIDEO
+---------------------------------
+Librería:  agora-token ^2.0.5 (genera tokens RTC desde el servidor)
+Variables de entorno necesarias (agregar al .env):
+  AGORA_APP_ID=tu_app_id
+  AGORA_APP_CERTIFICATE=tu_app_certificate
+
+Flujo del backend:
+  1. La app solicita GET /calls/token?channel=serviceId&uid=userId
+  2. El backend genera un RtcTokenBuilder con expiración corta (1-2h)
+  3. Devuelve { token, appId } a la app
+  4. La app se une al canal Agora con ese token
+
+Módulo pendiente de crear:
+  src/calls/calls.module.ts
+  src/calls/calls.controller.ts  → GET /calls/token
+  src/calls/calls.service.ts     → genera token con agora-token
+
+Ejemplo de generación de token:
+  import { RtcTokenBuilder, RtcRole } from 'agora-token';
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    appId, appCertificate, channelName, uid,
+    RtcRole.PUBLISHER, privilegeExpiredTs
+  );
+
+Consola Agora: https://console.agora.io
+  → Crear proyecto → copiar App ID y App Certificate
+
+
+NOTAS IMPORTANTES
+------------------
+1. Prisma 7 NO usa "url" en datasource del schema.prisma — va en prisma.config.ts
+2. Prisma 7 NO necesita previewFeatures = ["driverAdapters"] — ya está estable
+3. El PrismaService usa pg.Pool + PrismaPg (adaptador nativo, más rápido que TCP)
+4. CORS permite localhost y 192.168.x.x por regex (para desarrollo con móvil)
+5. El puerto es 4000 (configurable con variable PORT en .env)
+6. Los módulos Prisma y Config son @Global — no hace falta importarlos en cada módulo
+7. El caché de intentos de reset de contraseña es en memoria (se pierde al reiniciar)
+   → Para producción considerar Redis como store del CacheModule
+
+================================================================================
