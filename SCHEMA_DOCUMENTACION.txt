@@ -191,8 +191,8 @@ Relaciones:
 ────────────────────────────────────────
 PROVIDERSERVICE
 ────────────────────────────────────────
-Propósito: Representa una especialidad del provider. Un usuario con
-role PROVIDER puede tener MÚLTIPLES registros ProviderService, uno
+Propósito: Datos OPERATIVOS de una especialidad del provider. Un usuario
+con role PROVIDER puede tener MÚLTIPLES registros ProviderService, uno
 por cada tipo de servicio en el que está habilitado.
 
 Ejemplo: Un provider puede tener Gasfitería y Electricidad, cada uno
@@ -205,12 +205,8 @@ dos veces la misma especialidad.
 Campos:
   - userId          → Provider al que pertenece esta especialidad
   - serviceTypeId   → Tipo de servicio (Gasfitería, Electricidad, etc.)
-  - phone           → Teléfono de contacto para esta especialidad (puede ser diferente por especialidad)
   - phoneCountryIso → FK a Country — define dialCode y moneda del ProviderWallet
-  - bio             → Descripción profesional para esta especialidad
-  - experience      → Años de experiencia
-  - coverageRadius  → Radio máximo de cobertura en kilómetros
-  - commercialName  → Nombre del negocio o marca (opcional)
+                      No cambia después de postularse (afecta la moneda del wallet)
   - status          → PENDING | APPROVED | REJECTED (el admin verifica documentos)
   - available       → true = disponible para recibir nuevos trabajos ahora mismo
   - rating          → Promedio de calificaciones (0.0 a 5.0)
@@ -223,8 +219,32 @@ Relaciones:
   - serviceType    → Pertenece a un ServiceType
   - country        → Pertenece a un Country (define dialCode y currency)
   - providerWallet → Billetera de ganancias de esta especialidad (1 a 1)
+  - profile        → Perfil de presentación de esta especialidad (1 a 1)
   - documents      → Documentos/certificados subidos para verificación
   - services       → Servicios atendidos con esta especialidad
+
+
+────────────────────────────────────────
+PROVIDERSERVICEPROFILE
+────────────────────────────────────────
+Propósito: Datos de PRESENTACIÓN de una especialidad. Contiene todo
+lo que el cliente ve y lo que el provider puede editar libremente.
+Se crea al postularse junto con ProviderService.
+
+Campos:
+  - providerServiceId  → FK a ProviderService (1 a 1)
+  - phone              → Teléfono de contacto (editable, no afecta la moneda)
+  - bio                → Descripción profesional para esta especialidad
+  - experience         → Años de experiencia
+  - coverageRadius     → Radio máximo de cobertura en kilómetros
+  - commercialName     → Nombre del negocio o marca (opcional)
+  - customServiceName  → Nombre personalizado del servicio
+                         Ej: "Plomería Express", "Electricista 24h"
+  - servicePhoto       → URL pública de la foto del servicio en Cloudinary
+  - servicePhotoPublicId → public_id de Cloudinary para reemplazar o eliminar la foto
+
+Relaciones:
+  - providerService → Pertenece a un ProviderService (1 a 1)
 
 
 ────────────────────────────────────────
@@ -438,6 +458,7 @@ Country (1) ──────── (N) ProviderService [país de la especialid
 
 ClientProfile  (1) ── (1) ClientWallet
 ProviderService (1) ── (1) ProviderWallet
+ProviderService (1) ── (1) ProviderServiceProfile
 ProviderService (1) ── (N) ProviderDocument
 ProviderService (N) ── (1) ServiceType
 ProviderService (N) ── (1) Country
@@ -477,6 +498,7 @@ LOGIN (3 opciones):
 
 POSTULACIÓN A ESPECIALIDAD:
   Provider elige ServiceType → ProviderService (PENDING)
+  + ProviderServiceProfile (phone, bio, experience, coverageRadius, etc.)
   + sube documentos → ProviderDocument[]
   + ProviderWallet (balance: 0)
   Admin aprueba → ProviderService (APPROVED)

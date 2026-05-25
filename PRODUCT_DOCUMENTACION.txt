@@ -97,27 +97,38 @@ RECUPERAR CONTRASEÑA:
 
 Un provider puede postularse a múltiples especialidades.
 Cada especialidad es completamente independiente — tiene su propio
-teléfono de contacto, perfil profesional, wallet de ganancias,
-estado de verificación y disponibilidad.
+perfil de presentación, wallet de ganancias, estado de verificación
+y disponibilidad.
 Modelo similar a Uber — un solo login, múltiples modalidades de trabajo.
+
+Cada especialidad se compone de dos tablas:
+  → ProviderService       — datos operativos (estado, ubicación, rating)
+  → ProviderServiceProfile — datos de presentación (teléfono, bio, foto, etc.)
 
 Pasos:
   1. Provider elige un ServiceType disponible
      (Gasfitería, Electricidad, Carpintería, etc.)
 
-  2. Completa los datos de esa especialidad:
-       - Teléfono + país elegido del combo box (phoneCountryIso)
+  2. Completa el perfil de la especialidad (ProviderServiceProfile):
+       - Teléfono de contacto para esta especialidad
+       - País del teléfono elegido del combo box (phoneCountryIso)
          El dialCode y moneda se obtienen de la tabla Country
          (puede ser diferente al de otras especialidades)
+         phoneCountryIso se guarda en ProviderService porque define
+         la moneda del ProviderWallet — no cambia después
        - Bio profesional específica para esta especialidad
        - Años de experiencia en esta especialidad
        - Radio máximo de cobertura en kilómetros
        - Nombre comercial o de negocio (opcional)
+       - Nombre personalizado del servicio (opcional)
+         Ej: "Plomería Express", "Electricista 24h"
+       - Foto del servicio (opcional, subida vía Cloudinary)
 
   3. Sube documentos de verificación (uno por uno vía Cloudinary):
        - Certificados, títulos, carnets profesionales, etc.
-       - Cada documento se guarda con su URL y publicId de Cloudinary
-         para poder eliminarlo o reemplazarlo individualmente
+       - Cada documento se guarda en ProviderDocument con su URL
+         y publicId de Cloudinary para eliminarlo o reemplazarlo
+         individualmente
 
   4. La especialidad queda en estado PENDING
      → Admin recibe notificación para revisar
@@ -129,11 +140,14 @@ Pasos:
   6. Con estado APPROVED el provider puede:
        - Activar/desactivar su disponibilidad (available: true/false)
        - Actualizar su ubicación en tiempo real (lat/lng)
+         Ambos campos viven en ProviderService — son datos operativos
        - Recibir solicitudes de servicio de clientes cercanos
        - Acumular ganancias en su ProviderWallet
+       - Editar su ProviderServiceProfile libremente
+         (teléfono, bio, foto, nombre personalizado, etc.)
 
   7. Se crea ProviderWallet automáticamente al postularse (saldo: 0)
-     La moneda se deriva del phoneCountryIso de esta especialidad
+     La moneda se deriva del phoneCountryIso guardado en ProviderService
      (BO → BOB, US → USD, PE → PEN)
 
 Restricción: Un provider no puede postularse dos veces a la misma
