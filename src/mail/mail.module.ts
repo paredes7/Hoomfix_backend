@@ -1,6 +1,12 @@
 import { Module } from '@nestjs/common';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
+import { createRequire } from 'module';
+const _require = createRequire(__filename);
+const _adapterPath = _require
+  .resolve('@nestjs-modules/mailer')
+  .replace('index.js', 'adapters/handlebars.adapter.js');
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const { HandlebarsAdapter } = _require(_adapterPath);
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailService } from './mail.service';
 import { join } from 'path';
@@ -41,8 +47,8 @@ function parseBoolean(value?: string | null) {
           template: {
             dir: join(__dirname, 'templates'),
             adapter: new HandlebarsAdapter({
-              eq: (a, b) => a === b,
-              formatDate: (date) => new Date(date).toLocaleDateString(),
+              eq: (a: unknown, b: unknown) => a === b,
+              formatDate: (date: string) => new Date(date).toLocaleDateString(),
             }),
             options: {
               strict: true,

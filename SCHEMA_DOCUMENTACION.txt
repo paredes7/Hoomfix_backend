@@ -1,0 +1,523 @@
+================================================================
+     DOCUMENTACIÓN DEL SCHEMA PRISMA - HOOMFIX BACKEND
+================================================================
+Fecha: 25/05/2026
+Base de datos: PostgreSQL (Neon)
+ORM: Prisma v7.8.0
+Tipo de aplicación: Marketplace de servicios on-demand
+Modelo de negocio: Comisión por transacción (take-rate model)
+================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. ENUMS (Tipos enumerados)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Role           → CLIENT | PROVIDER | ADMIN
+               Define el tipo de usuario en el sistema.
+
+ProviderStatus → PENDING | APPROVED | REJECTED
+               Estado de verificación de un provider en una especialidad.
+               El admin aprueba o rechaza según los documentos subidos.
+
+ServiceStatus  → SEARCHING | ASSIGNED | ON_WAY | IN_PROGRESS | COMPLETED | CANCELLED
+               Ciclo de vida de un servicio desde que el cliente lo solicita
+               hasta que se completa o cancela.
+
+MessageType    → TEXT | IMAGE | AUDIO
+               Tipo de mensaje dentro del chat de un servicio.
+
+CallType       → VOICE | VIDEO
+               Tipo de llamada entre cliente y provider.
+
+CallStatus     → INITIATED | ACCEPTED | REJECTED | ENDED | MISSED
+               Estado de una llamada en tiempo real.
+
+RechargeStatus → PENDING | APPROVED | REJECTED
+               Estado de una recarga de saldo en la billetera del cliente.
+
+WithdrawalStatus → PENDING | APPROVED | REJECTED
+               Estado de una solicitud de retiro de ganancias del provider.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. MODELOS Y SUS CAMPOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+────────────────────────────────────────
+COUNTRY
+────────────────────────────────────────
+Propósito: Catálogo de países gestionado por el admin.
+El frontend usa esta tabla para poblar el combo box de selección
+de país al registrarse. Define el código de marcado y la moneda
+local de cada país. Se llena inicialmente con el seed.
+
+Campos:
+  - iso      → Código ISO del país, clave primaria (ej: BO, US, PE)
+  - dialCode → Código de marcado telefónico (ej: +591, +1, +51)
+  - name     → Nombre del país (ej: Bolivia, Estados Unidos)
+  - currency → Moneda local del país (ej: BOB, USD, PEN)
+  - active   → false = no aparece en el combo box del frontend
+
+Relaciones:
+  - clientContacts   → Clientes que pertenecen a este país
+  - providerServices → Especialidades de providers de este país
+
+Nota: phoneDialCode fue eliminado de ClientContact y ProviderService
+      porque ya vive aquí. Se obtiene haciendo JOIN con Country.
+
+
+────────────────────────────────────────
+SYSTEMCONFIG
+────────────────────────────────────────
+Propósito: Configuración global del sistema. Solo existe UN registro.
+El admin lo actualiza cuando necesita ajustar parámetros globales.
+
+Campos:
+  - exchangeRateUsdBob  → Tipo de cambio USD a BOB (ej: 6.96)
+  - commissionRate      → Comisión que cobra la plataforma por servicio (0.15 = 15%)
+  - maxConcurrentJobs   → Máximo de trabajos simultáneos por especialidad (ej: 2)
+  - updatedAt           → Última actualización
+
+Relaciones: Ninguna (tabla de configuración independiente)
+
+
+────────────────────────────────────────
+SERVICETYPE
+────────────────────────────────────────
+Propósito: Catálogo de tipos de servicio que ofrece la plataforma.
+El admin puede crear, activar o desactivar categorías sin tocar el código.
+
+Campos:
+  - name        → Nombre único (ej: "Gasfitería", "Electricidad")
+  - icon        → URL o nombre del ícono para la app
+  - description → Descripción del tipo de servicio
+  - active      → false = no aparece en la app para nuevos servicios
+
+Relaciones:
+  - providerServices → Providers registrados en esta categoría
+  - services         → Servicios solicitados de esta categoría
+
+
+────────────────────────────────────────
+USER
+────────────────────────────────────────
+Propósito: Modelo base SOLO para autenticación. Cualquier usuario
+(cliente, provider o admin) tiene un User. Los datos personales
+viven en ClientProfile o ProviderProfile.
+
+Campos:
+  - email               → Correo para iniciar sesión (único, obligatorio)
+  - username            → Generado automáticamente desde el email al registrarse
+                          Solo letras y números. Si ya existe agrega número al final
+                          Ej: carlos.mamani@gmail.com → carlosmamani
+  - password            → Hash bcrypt de la contraseña
+  - role                → CLIENT | PROVIDER | ADMIN
+  - isActive            → false = cuenta bloqueada por el admin
+  - fcmToken            → Token Firebase para notificaciones push
+  - resetPasswordToken  → Hash del código de recuperación de contraseña
+  - resetPasswordExpiry → Expiración del código de recuperación (15 minutos)
+
+Login soporta 3 opciones:
+  1. email + contraseña
+  2. username + contraseña
+  3. Google OAuth
+
+Relaciones:
+  - clientProfile   → 1 a 1 opcional. Existe si role = CLIENT
+  - clientContact   → 1 a 1 opcional. Existe si role = CLIENT
+  - providerProfile → 1 a 1 opcional. Existe si role = PROVIDER
+  - providerServices → 1 a muchos. Especialidades si role = PROVIDER
+  - sentMessages    → Mensajes enviados en servicios
+  - clientServices  → Servicios solicitados (solo clientes)
+  - ratings         → Calificaciones dadas (solo clientes)
+
+
+────────────────────────────────────────
+CLIENTCONTACT
+────────────────────────────────────────
+Propósito: Datos de contacto telefónico del cliente. Separado de User
+porque el teléfono es exclusivo del cliente — el provider maneja su
+teléfono por especialidad en ProviderService.
+
+Campos:
+  - phone           → Número de teléfono único en la plataforma
+  - phoneCountryIso → FK a Country — el dialCode y moneda se obtienen
+                      haciendo JOIN con la tabla Country
+
+Relaciones:
+  - user    → Pertenece a un User (1 a 1)
+  - country → Pertenece a un Country (define dialCode y currency)
+
+
+────────────────────────────────────────
+CLIENTPROFILE
+────────────────────────────────────────
+Propósito: Datos personales del cliente. Se crea automáticamente
+al registrarse como CLIENT. Tiene su propio ClientWallet.
+
+Campos:
+  - firstName      → Nombre
+  - lastName       → Apellido
+  - avatar         → URL pública de la foto de perfil en Cloudinary
+  - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
+  - billingRegion  → Región de facturación (opcional)
+  - referralCode   → Código único para referir a otros usuarios
+  - lastLoginAt    → Último inicio de sesión
+
+Relaciones:
+  - clientWallet → Billetera para pagar servicios (1 a 1)
+  - user         → Pertenece a un User (1 a 1)
+
+
+────────────────────────────────────────
+PROVIDERPROFILE
+────────────────────────────────────────
+Propósito: Datos personales del provider. UN solo perfil sin importar
+cuántas especialidades tenga. Se crea al registrarse como PROVIDER.
+
+Campos:
+  - firstName      → Nombre
+  - lastName       → Apellido
+  - avatar         → URL pública de la foto de perfil en Cloudinary
+  - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
+  - referralCode   → Código único para referir a otros usuarios
+  - lastLoginAt    → Último inicio de sesión
+
+Relaciones:
+  - user → Pertenece a un User (1 a 1)
+
+
+────────────────────────────────────────
+PROVIDERSERVICE
+────────────────────────────────────────
+Propósito: Representa una especialidad del provider. Un usuario con
+role PROVIDER puede tener MÚLTIPLES registros ProviderService, uno
+por cada tipo de servicio en el que está habilitado.
+
+Ejemplo: Un provider puede tener Gasfitería y Electricidad, cada uno
+con su propio estado de verificación, calificación, wallet y disponibilidad.
+Igual que Uber — un solo login, múltiples modalidades de trabajo.
+
+Restricción: @@unique([userId, serviceTypeId]) → No puede tener
+dos veces la misma especialidad.
+
+Campos:
+  - userId          → Provider al que pertenece esta especialidad
+  - serviceTypeId   → Tipo de servicio (Gasfitería, Electricidad, etc.)
+  - phone           → Teléfono de contacto para esta especialidad (puede ser diferente por especialidad)
+  - phoneCountryIso → FK a Country — define dialCode y moneda del ProviderWallet
+  - bio             → Descripción profesional para esta especialidad
+  - experience      → Años de experiencia
+  - coverageRadius  → Radio máximo de cobertura en kilómetros
+  - commercialName  → Nombre del negocio o marca (opcional)
+  - status          → PENDING | APPROVED | REJECTED (el admin verifica documentos)
+  - available       → true = disponible para recibir nuevos trabajos ahora mismo
+  - rating          → Promedio de calificaciones (0.0 a 5.0)
+  - totalRatings    → Cantidad total de calificaciones recibidas
+  - latitude        → Ubicación actual para encontrar el provider más cercano
+  - longitude       → Ubicación actual
+
+Relaciones:
+  - user           → Pertenece a un User
+  - serviceType    → Pertenece a un ServiceType
+  - country        → Pertenece a un Country (define dialCode y currency)
+  - providerWallet → Billetera de ganancias de esta especialidad (1 a 1)
+  - documents      → Documentos/certificados subidos para verificación
+  - services       → Servicios atendidos con esta especialidad
+
+
+────────────────────────────────────────
+PROVIDERDOCUMENT
+────────────────────────────────────────
+Propósito: Documento o certificado subido por el provider para verificar
+una especialidad. Cada documento se guarda por separado para poder
+eliminarlo o reemplazarlo individualmente sin afectar los demás.
+
+Campos:
+  - providerServiceId → Especialidad a la que pertenece
+  - url               → URL pública del documento en Cloudinary
+  - publicId          → public_id de Cloudinary para eliminar o reemplazar
+  - name              → Nombre descriptivo (ej: "Certificado de electricista")
+
+Relaciones:
+  - providerService → Pertenece a un ProviderService
+
+
+────────────────────────────────────────
+CLIENTWALLET
+────────────────────────────────────────
+Propósito: Billetera del cliente. Solo para pagar servicios.
+Recibe recargas aprobadas por el admin.
+La moneda se deriva de ClientContact.phoneCountryIso (no se almacena).
+
+Campos:
+  - clientProfileId → Cliente dueño de esta billetera
+  - balance         → Saldo disponible para pagar servicios
+
+Relaciones:
+  - clientProfile → Pertenece a un ClientProfile (1 a 1)
+  - recharges     → Historial de recargas
+
+
+────────────────────────────────────────
+PROVIDERWALLET
+────────────────────────────────────────
+Propósito: Billetera del provider por especialidad. Acumula ganancias
+de servicios completados. Cada especialidad tiene su propia wallet
+independiente.
+La moneda se deriva de ProviderService.phoneCountryIso (no se almacena).
+
+Campos:
+  - providerServiceId → Especialidad dueña de esta billetera
+  - balance           → Ganancias acumuladas pendientes de retiro
+
+Relaciones:
+  - providerService → Pertenece a un ProviderService (1 a 1)
+  - withdrawals     → Historial de retiros
+
+
+────────────────────────────────────────
+PACKAGE
+────────────────────────────────────────
+Propósito: Paquetes de recarga que el admin crea. El cliente elige
+uno para recargar su ClientWallet. Funciona como tarjeta prepago.
+
+Campos:
+  - name   → Nombre del paquete (ej: "Paquete 50", "Paquete 100")
+  - amount → Monto que se acredita al ClientWallet al aprobarse
+  - active → false = no aparece para los clientes
+
+Relaciones:
+  - recharges → Recargas que usaron este paquete
+
+
+────────────────────────────────────────
+RECHARGE
+────────────────────────────────────────
+Propósito: Registro de cada recarga de saldo que hace un cliente.
+Flujo: Cliente elige Package → Recharge (PENDING) →
+admin aprueba → ClientWallet.balance += package.amount
+
+Campos:
+  - clientWalletId → Wallet del cliente que recarga
+  - packageId      → Paquete elegido por el cliente
+  - status         → PENDING | APPROVED | REJECTED
+
+Relaciones:
+  - clientWallet → Pertenece a un ClientWallet
+  - package      → Pertenece a un Package
+
+
+────────────────────────────────────────
+WITHDRAWAL
+────────────────────────────────────────
+Propósito: Solicitud de retiro de ganancias del provider.
+El provider solicita retirar el saldo de una especialidad específica.
+Flujo: Provider solicita → Withdrawal (PENDING) →
+admin aprueba → ProviderWallet.balance -= amount
+
+Campos:
+  - providerWalletId → Wallet de la especialidad de donde se retira
+  - amount           → Monto a retirar
+  - bankName         → Nombre del banco destino
+  - accountNumber    → Número de cuenta bancaria destino
+  - status           → PENDING | APPROVED | REJECTED
+
+Relaciones:
+  - providerWallet → Pertenece a un ProviderWallet
+
+
+────────────────────────────────────────
+SERVICE
+────────────────────────────────────────
+Propósito: Núcleo del negocio. Representa un servicio solicitado
+por un cliente. Conecta al cliente con un ProviderService específico.
+
+Flujo de estados:
+  SEARCHING   → Cliente solicita, sistema busca provider disponible
+  ASSIGNED    → Provider aceptó el trabajo
+  ON_WAY      → Provider va en camino al domicilio
+  IN_PROGRESS → Provider está realizando el trabajo
+  COMPLETED   → Trabajo finalizado
+  CANCELLED   → Servicio cancelado
+
+Campos:
+  - clientId          → Cliente que solicitó
+  - providerServiceId → Especialidad asignada (null hasta que se asigne)
+  - serviceTypeId     → Tipo de servicio solicitado
+  - description       → Descripción del problema o trabajo
+  - address           → Dirección donde se realiza
+  - latitude          → Coordenadas para el mapa
+  - longitude         → Coordenadas para el mapa
+  - status            → Estado actual del servicio
+  - price             → Precio acordado del servicio
+  - commission        → Comisión cobrada (price * SystemConfig.commissionRate)
+
+Relaciones:
+  - client          → Pertenece a un User (cliente)
+  - providerService → Pertenece a un ProviderService (opcional hasta asignación)
+  - serviceType     → Pertenece a un ServiceType
+  - messages        → Chat del servicio
+  - calls           → Llamadas realizadas durante el servicio
+  - rating          → Calificación del cliente al finalizar (1 a 1)
+
+
+────────────────────────────────────────
+MESSAGE
+────────────────────────────────────────
+Propósito: Mensajes del chat dentro de un servicio activo.
+Cliente y provider se comunican durante el servicio.
+
+Campos:
+  - serviceId → Servicio al que pertenece
+  - senderId  → Usuario que envió el mensaje
+  - content   → Texto o URL del archivo (imagen/audio)
+  - type      → TEXT | IMAGE | AUDIO
+  - read      → true = el receptor ya lo leyó
+
+Relaciones:
+  - service → Pertenece a un Service
+  - sender  → Pertenece a un User
+
+
+────────────────────────────────────────
+CALL
+────────────────────────────────────────
+Propósito: Registro de llamadas de voz o video entre cliente
+y provider durante un servicio.
+
+Campos:
+  - serviceId  → Servicio en el que ocurrió la llamada
+  - callerId   → Usuario que inició la llamada
+  - receiverId → Usuario que recibe la llamada
+  - type       → VOICE | VIDEO
+  - status     → INITIATED | ACCEPTED | REJECTED | ENDED | MISSED
+  - startedAt  → Momento en que el receptor aceptó
+  - endedAt    → Momento en que terminó
+  - duration   → Duración en segundos (calculado al terminar)
+
+Relaciones:
+  - service → Pertenece a un Service
+
+
+────────────────────────────────────────
+RATING
+────────────────────────────────────────
+Propósito: Calificación que el cliente da al provider después
+de completar un servicio. Solo una calificación por servicio.
+Al crearse recalcula ProviderService.rating automáticamente.
+
+Fórmula: rating = (rating * totalRatings + score) / (totalRatings + 1)
+
+Campos:
+  - serviceId → Servicio calificado (único — un solo Rating por servicio)
+  - clientId  → Cliente que calificó
+  - score     → Puntuación del 1 al 5
+  - comment   → Comentario opcional
+
+Relaciones:
+  - service → Pertenece a un Service (1 a 1)
+  - client  → Pertenece a un User (cliente)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. MAPA DE RELACIONES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+User (1) ──────── (1) ClientProfile
+User (1) ──────── (1) ClientContact
+User (1) ──────── (1) ProviderProfile
+User (1) ──────── (N) ProviderService    [una por especialidad]
+User (1) ──────── (N) Message            [mensajes enviados]
+User (1) ──────── (N) Service            [servicios solicitados]
+User (1) ──────── (N) Rating             [calificaciones dadas]
+
+Country (1) ──────── (N) ClientContact   [país del cliente]
+Country (1) ──────── (N) ProviderService [país de la especialidad]
+
+ClientProfile  (1) ── (1) ClientWallet
+ProviderService (1) ── (1) ProviderWallet
+ProviderService (1) ── (N) ProviderDocument
+ProviderService (N) ── (1) ServiceType
+ProviderService (N) ── (1) Country
+ProviderService (1) ── (N) Service
+
+ServiceType (1) ── (N) Service
+
+ClientWallet  (1) ── (N) Recharge
+ProviderWallet (1) ── (N) Withdrawal
+Package        (1) ── (N) Recharge
+
+Service (1) ── (N) Message
+Service (1) ── (N) Call
+Service (1) ── (1) Rating
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. FLUJOS PRINCIPALES DEL NEGOCIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REGISTRO CLIENTE:
+  User (CLIENT) + username generado desde email
+  → ClientContact (phone, dialCode, countryIso)
+  → ClientProfile (firstName, lastName)
+  → ClientWallet (balance: 0)
+
+REGISTRO PROVIDER:
+  User (PROVIDER) + username generado desde email
+  → ProviderProfile (firstName, lastName)
+  (sin wallet, sin teléfono — se agregan por especialidad)
+
+LOGIN (3 opciones):
+  1. email + contraseña
+  2. username + contraseña
+  3. Google OAuth
+  → Actualiza lastLoginAt en ClientProfile o ProviderProfile según rol
+
+POSTULACIÓN A ESPECIALIDAD:
+  Provider elige ServiceType → ProviderService (PENDING)
+  + sube documentos → ProviderDocument[]
+  + ProviderWallet (balance: 0)
+  Admin aprueba → ProviderService (APPROVED)
+
+RECARGA DE SALDO:
+  Cliente elige Package → Recharge (PENDING)
+  Admin aprueba → ClientWallet.balance += package.amount
+
+SOLICITUD DE SERVICIO:
+  Cliente crea Service (SEARCHING) →
+  Sistema busca ProviderService donde:
+    status = APPROVED
+    available = true
+    serviceTypeId = el solicitado
+    trabajos activos < SystemConfig.maxConcurrentJobs
+    distancia < coverageRadius (por lat/lng)
+  Provider acepta → Service (ASSIGNED) → ON_WAY → IN_PROGRESS → COMPLETED
+
+PAGO AL COMPLETAR:
+  ClientWallet.balance -= price
+  ProviderWallet.balance += (price - commission)
+  commission = price * SystemConfig.commissionRate
+  Si monedas distintas → usar SystemConfig.exchangeRateUsdBob
+
+CALIFICACIÓN:
+  Service COMPLETED → Cliente crea Rating →
+  ProviderService.rating = (rating * totalRatings + score) / (totalRatings + 1)
+  ProviderService.totalRatings += 1
+
+RETIRO DE GANANCIAS:
+  Provider solicita Withdrawal (amount, bankName, accountNumber) →
+  Admin aprueba → ProviderWallet.balance -= amount
+
+NOTIFICACIONES:
+  FCM push → eventos en tiempo real (nuevo servicio, mensajes, llamadas)
+  Email    → eventos administrativos (aprobación/rechazo especialidad,
+             retiros, recargas, suspensión de cuenta)
+
+RECUPERAR CONTRASEÑA:
+  Usuario ingresa email → código de 6 dígitos enviado al correo
+  Válido 15 minutos, máximo 5 intentos fallidos
+  Usuario ingresa código → nueva contraseña
+
+================================================================

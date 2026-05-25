@@ -1,25 +1,16 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { Category } from '@prisma/client';
+import { IsEmail, IsString, MinLength } from 'class-validator';
 
 export class RegisterTechnicianDto {
   @IsString()
-  name: string;
-
-  @IsOptional()
-  @IsEmail({}, { message: 'Email inválido' })
-  email?: string;
+  firstName!: string;
 
   @IsString()
-  phone: string;
+  lastName!: string;
+
+  @IsEmail({}, { message: 'Email inválido' })
+  email!: string;
 
   @IsString()
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
-  password: string;
-
-  @IsEnum(Category)
-  category: Category;
-
-  @IsOptional()
-  @IsString()
-  documentUrl?: string;
+  password!: string;
 }

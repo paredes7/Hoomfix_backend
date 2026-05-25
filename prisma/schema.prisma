@@ -9,194 +9,365 @@ datasource db {
 // ─── ENUMS ────────────────────────────────────────────────────────────────────
 
 enum Role {
-  CLIENT
-  TECHNICIAN
-  ADMIN
+  CLIENT   // Usuario que solicita servicios
+  PROVIDER // Técnico que ofrece servicios
+  ADMIN    // Administrador de la plataforma
 }
 
-enum Category {
-  PLUMBING
-  ELECTRICITY
-  LOCKSMITH
-  GAS
-  NETWORK
-}
-
-enum TechStatus {
-  PENDING
-  APPROVED
-  REJECTED
+enum ProviderStatus {
+  PENDING  // Postulación enviada, esperando revisión del admin
+  APPROVED // Admin aprobó — puede recibir trabajos
+  REJECTED // Admin rechazó los documentos
 }
 
 enum ServiceStatus {
-  SEARCHING
-  ASSIGNED
-  ON_WAY
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
+  SEARCHING   // Cliente solicitó, buscando provider disponible
+  ASSIGNED    // Provider aceptó el trabajo
+  ON_WAY      // Provider va en camino al domicilio
+  IN_PROGRESS // Provider está realizando el trabajo
+  COMPLETED   // Trabajo finalizado
+  CANCELLED   // Servicio cancelado por cliente o provider
 }
 
 enum MessageType {
-  TEXT
-  IMAGE
-  AUDIO
+  TEXT  // Mensaje de texto plano
+  IMAGE // URL de imagen enviada en el chat
+  AUDIO // URL de nota de voz enviada en el chat
 }
 
 enum CallType {
-  VOICE
-  VIDEO
+  VOICE // Llamada de voz
+  VIDEO // Videollamada
 }
 
 enum CallStatus {
-  INITIATED
-  ACCEPTED
-  REJECTED
-  ENDED
-  MISSED
+  INITIATED // Llamada iniciada, esperando respuesta
+  ACCEPTED  // Receptor aceptó la llamada
+  REJECTED  // Receptor rechazó la llamada
+  ENDED     // Llamada terminada normalmente
+  MISSED    // No fue atendida
 }
 
 enum RechargeStatus {
-  PENDING
-  APPROVED
-  REJECTED
+  PENDING  // Solicitud enviada, esperando aprobación del admin
+  APPROVED // Admin aprobó — saldo acreditado al ClientWallet
+  REJECTED // Admin rechazó la recarga
+}
+
+enum WithdrawalStatus {
+  PENDING  // Solicitud enviada, esperando aprobación del admin
+  APPROVED // Admin aprobó — saldo debitado del ProviderWallet
+  REJECTED // Admin rechazó el retiro
 }
 
 // ─── MODELS ───────────────────────────────────────────────────────────────────
 
+/// Catálogo de países. El admin agrega o desactiva países desde el panel.
+/// Cada país define su código ISO, código de marcado y moneda local.
+model Country {
+  iso      String  @id              // Código ISO del país (ej: BO, US, PE)
+  dialCode String                   // Código de marcado telefónico (ej: +591, +1)
+  name     String                   // Nombre del país (ej: Bolivia)
+  currency String                   // Moneda local (ej: BOB, USD, PEN)
+  active   Boolean @default(true)   // false = no aparece en el combo box del frontend
+
+  clientContacts   ClientContact[]   // Clientes de este país
+  providerServices ProviderService[] // Especialidades de providers de este país
+}
+
+/// Configuración global del sistema. Solo existe UN registro.
+/// El admin ajusta el tipo de cambio, comisión de la plataforma y límite de trabajos simultáneos.
+model SystemConfig {
+  id                 String   @id @default(uuid())
+  exchangeRateUsdBob Float    @default(6.96)  // Tipo de cambio USD → BOB (ej: 6.96)
+  commissionRate     Float    @default(0.15)  // Porcentaje que cobra la plataforma por servicio (0.15 = 15%)
+  maxConcurrentJobs  Int      @default(2)     // Máximo de trabajos activos simultáneos por especialidad
+  updatedAt          DateTime @updatedAt
+}
+
+/// Catálogo de tipos de servicio (Gasfitería, Electricidad, etc.).
+/// El admin crea y activa/desactiva categorías sin tocar el código.
+model ServiceType {
+  id          String   @id @default(uuid())
+  name        String   @unique  // Nombre único de la categoría (ej: "Gasfitería")
+  icon        String?           // URL o nombre del ícono para mostrar en la app
+  description String?           // Descripción breve del tipo de servicio
+  active      Boolean  @default(true)  // false = no aparece en la app para nuevos servicios
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  providerServices ProviderService[] // Providers registrados en esta categoría
+  services         Service[]         // Servicios solicitados de esta categoría
+}
+
+/// Modelo base solo para autenticación. Cualquier usuario (cliente, provider o admin) tiene un User.
+/// Los datos personales viven en ClientProfile o ProviderProfile según el rol.
 model User {
-  id                   String    @id @default(uuid())
-  name                 String
-  email                String?   @unique
-  phone                String    @unique
-  password             String
-  role                 Role      @default(CLIENT)
-  avatar               String?
-  fcmToken             String?
-  resetPasswordToken   String?
-  resetPasswordExpiry  DateTime?
-  lastLoginAt          DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  email               String?   @unique   // Correo para iniciar sesión (obligatorio para clientes, opcional para providers)
+  username            String    @unique   // Generado automáticamente desde el email (solo letras y números)
+  password            String              // Hash bcrypt de la contraseña
+  role                Role      @default(CLIENT)  // Define si es cliente, provider o admin
+  isActive            Boolean   @default(true)    // false = cuenta bloqueada por el admin
+  fcmToken            String?             // Token Firebase para notificaciones push
+  resetPasswordToken  String?             // Hash del código de recuperación de contraseña
+  resetPasswordExpiry DateTime?           // Fecha de expiración del código de recuperación
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  wallet               Wallet?
-  technician           Technician?
-  sentMessages         Message[]       @relation("SentMessages")
-  clientServices       Service[]       @relation("ClientServices")
+  clientProfile    ClientProfile?            // Datos personales si es CLIENT
+  clientContact    ClientContact?            // Teléfono de contacto si es CLIENT
+  providerProfile  ProviderProfile?          // Datos personales si es PROVIDER
+  providerServices ProviderService[]         // Especialidades registradas si es PROVIDER
+  sentMessages     Message[]         @relation("SentMessages")  // Mensajes enviados en servicios
+  clientServices   Service[]         @relation("ClientServices") // Servicios solicitados si es CLIENT
+  ratings          Rating[]          @relation("ClientRatings")  // Calificaciones dadas si es CLIENT
 }
 
-model Technician {
-  id           String     @id @default(uuid())
-  userId       String     @unique
-  category     Category
-  documentUrl  String?
-  status       TechStatus @default(PENDING)
-  available    Boolean    @default(false)
-  rating       Float      @default(0)
-  totalRatings Int        @default(0)
-  balance      Float      @default(0)
-  latitude     Float?
-  longitude    Float?
-  bio          String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+/// Datos de contacto telefónico del cliente. Separado de User porque el teléfono
+/// es exclusivo del cliente — el provider maneja su teléfono por especialidad en ProviderService.
+model ClientContact {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  phone           String   @unique  // Número de teléfono único en la plataforma
+  phoneCountryIso String            // FK a Country — define dialCode y moneda del ClientWallet
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user         User       @relation(fields: [userId], references: [id])
-  services     Service[]  @relation("TechnicianServices")
-  withdrawals  Withdrawal[]
+  user            User     @relation(fields: [userId], references: [id])           // Usuario dueño de este contacto
+  country         Country  @relation(fields: [phoneCountryIso], references: [iso]) // País del cliente
 }
 
-model Wallet {
-  id        String     @id @default(uuid())
-  userId    String     @unique
-  credits   Float      @default(0)
-  createdAt DateTime   @default(now())
+/// Datos personales del cliente. Se crea automáticamente al registrarse como CLIENT.
+/// Tiene su propio ClientWallet para pagar servicios.
+model ClientProfile {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  firstName         String              // Nombre del cliente
+  lastName          String              // Apellido del cliente
+  avatar            String?             // URL pública de la foto de perfil en Cloudinary
+  avatarPublicId    String?             // public_id de Cloudinary para poder reemplazar o eliminar la imagen
+  billingRegion     String?             // Región de facturación (opcional)
+  referralCode      String?   @unique   // Código único para referir a otros usuarios
+  lastLoginAt       DateTime?           // Último inicio de sesión
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id])
-  recharges Recharge[]
+  clientWallet      ClientWallet?                                        // Billetera para pagar servicios
+  user              User      @relation(fields: [userId], references: [id]) // Usuario dueño de este perfil
 }
 
+/// Datos personales del provider. Un solo perfil sin importar cuántas especialidades tenga.
+/// Se crea al registrarse como PROVIDER. Las especialidades viven en ProviderService.
+model ProviderProfile {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  firstName       String              // Nombre del provider
+  lastName        String              // Apellido del provider
+  avatar          String?             // URL pública de la foto de perfil en Cloudinary
+  avatarPublicId  String?             // public_id de Cloudinary para poder reemplazar o eliminar la imagen
+  referralCode    String?   @unique   // Código único para referir a otros usuarios
+  lastLoginAt  DateTime?           // Último inicio de sesión
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id]) // Usuario dueño de este perfil
+}
+
+/// Representa una especialidad del provider. Un provider puede tener múltiples registros,
+/// uno por cada tipo de servicio en el que está habilitado (Gasfitería, Electricidad, etc.).
+/// Cada uno tiene su propio estado de verificación, calificación y ProviderWallet de ganancias.
+/// @@unique([userId, serviceTypeId]) evita que el mismo provider se postule dos veces a la misma especialidad.
+model ProviderService {
+  id              String         @id @default(uuid())
+  userId          String                           // Provider al que pertenece esta especialidad
+  serviceTypeId   String                           // Tipo de servicio (Gasfitería, Electricidad, etc.)
+  phoneCountryIso String?                          // FK a Country — define dialCode y moneda del ProviderWallet
+  status          ProviderStatus @default(PENDING)  // Estado de verificación del admin
+  available       Boolean        @default(false)   // true = disponible para recibir nuevos trabajos
+  rating          Float          @default(0)       // Promedio de calificaciones (0.0 a 5.0)
+  totalRatings    Int            @default(0)        // Cantidad total de calificaciones recibidas
+  latitude        Float?                           // Ubicación actual — para encontrar el provider más cercano
+  longitude       Float?                           // Ubicación actual
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User                    @relation(fields: [userId], references: [id])           // Provider dueño de esta especialidad
+  serviceType     ServiceType             @relation(fields: [serviceTypeId], references: [id])    // Categoría de esta especialidad
+  country         Country?                @relation(fields: [phoneCountryIso], references: [iso]) // País de esta especialidad
+  providerWallet  ProviderWallet?                                                                 // Billetera de ganancias de esta especialidad
+  profile         ProviderServiceProfile?                                                         // Perfil de presentación de esta especialidad
+  documents       ProviderDocument[]                                                              // Documentos/certificados subidos para verificación
+  services        Service[]               @relation("ProviderServices")                           // Servicios atendidos con esta especialidad
+
+  @@unique([userId, serviceTypeId])
+}
+
+/// Perfil de presentación de una especialidad del provider.
+/// Contiene los datos editables que el cliente ve: foto, nombre personalizado, bio, teléfono, etc.
+/// Se crea al postularse y puede editarse libremente después.
+model ProviderServiceProfile {
+  id                String          @id @default(uuid())
+  providerServiceId String          @unique                  // Especialidad dueña de este perfil (1 a 1)
+  phone             String?                                  // Teléfono de contacto para esta especialidad
+  bio               String?                                  // Descripción profesional para esta especialidad
+  experience        Int?                                     // Años de experiencia en esta especialidad
+  coverageRadius    Float?                                   // Radio máximo de cobertura en kilómetros
+  commercialName    String?                                  // Nombre del negocio o marca (opcional)
+  customServiceName String?                                  // Nombre personalizado del servicio (ej: "Plomería Express")
+  servicePhoto      String?                                  // URL pública de la foto del servicio en Cloudinary
+  servicePhotoPublicId String?                               // public_id de Cloudinary para reemplazar o eliminar la foto
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  providerService   ProviderService @relation(fields: [providerServiceId], references: [id]) // Especialidad dueña de este perfil
+}
+
+/// Documento o certificado subido por el provider para verificar una especialidad.
+/// Cada documento se guarda por separado para poder eliminarlo o reemplazarlo individualmente.
+model ProviderDocument {
+  id                String          @id @default(uuid())
+  providerServiceId String                    // Especialidad a la que pertenece este documento
+  url               String                    // URL pública del documento en Cloudinary
+  publicId          String                    // public_id de Cloudinary para eliminar o reemplazar
+  name              String?                   // Nombre descriptivo (ej: "Certificado de electricista")
+  createdAt         DateTime        @default(now())
+
+  providerService   ProviderService @relation(fields: [providerServiceId], references: [id]) // Especialidad a la que pertenece
+}
+
+/// Billetera del cliente. Solo para pagar servicios. Recibe recargas aprobadas por el admin.
+/// La moneda se define según el país del cliente (BOB, USD, PEN, etc.).
+model ClientWallet {
+  id              String        @id @default(uuid())
+  clientProfileId String        @unique          // Cliente dueño de esta billetera
+  balance         Float         @default(0)      // Saldo disponible para pagar servicios
+  createdAt       DateTime      @default(now())
+
+  clientProfile   ClientProfile @relation(fields: [clientProfileId], references: [id]) // Cliente dueño de esta billetera
+  recharges       Recharge[]                                                           // Historial de recargas
+}
+
+/// Billetera del provider por especialidad. Acumula ganancias de servicios completados.
+/// La moneda se define según el país del provider para esa especialidad.
+model ProviderWallet {
+  id                String          @id @default(uuid())
+  providerServiceId String          @unique      // Especialidad dueña de esta billetera
+  balance           Float           @default(0)  // Ganancias acumuladas pendientes de retiro
+  createdAt         DateTime        @default(now())
+
+  providerService   ProviderService @relation(fields: [providerServiceId], references: [id]) // Especialidad dueña de esta billetera
+  withdrawals       Withdrawal[]                                                             // Historial de retiros
+}
+
+/// Paquetes de recarga que el admin crea. El cliente elige uno para recargar su wallet.
+/// Funciona como una tarjeta prepago: eliges el monto y ese monto entra a tu saldo.
+model Package {
+  id        String   @id @default(uuid())
+  name      String             // Nombre descriptivo del paquete (ej: "Paquete 50", "Paquete 100")
+  amount    Float              // Monto que se acredita al ClientWallet al aprobarse
+  active    Boolean  @default(true)  // false = no aparece para los clientes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recharges Recharge[] // Recargas que usaron este paquete
+}
+
+/// Registro de cada recarga de saldo que hace un cliente.
+/// Flujo: cliente elige Package → Recharge (PENDING) → admin aprueba → ClientWallet.balance += package.amount
 model Recharge {
-  id        String         @id @default(uuid())
-  walletId  String
-  amount    Float
-  credits   Float
-  bonus     Float          @default(0)
-  status    RechargeStatus @default(PENDING)
-  proofUrl  String?
-  createdAt DateTime       @default(now())
+  id             String         @id @default(uuid())
+  clientWalletId String                          // Wallet del cliente que recarga
+  packageId      String                          // Paquete elegido por el cliente
+  status         RechargeStatus @default(PENDING) // Estado de la recarga
+  createdAt      DateTime       @default(now())
 
-  wallet    Wallet         @relation(fields: [walletId], references: [id])
+  clientWallet ClientWallet  @relation(fields: [clientWalletId], references: [id]) // Wallet que recibe el saldo
+  package      Package       @relation(fields: [packageId], references: [id])       // Paquete elegido por el cliente
 }
 
+/// Solicitud de retiro de ganancias del provider.
+/// El provider solicita retirar el saldo de una especialidad específica a su cuenta bancaria.
+/// Flujo: provider solicita → Withdrawal (PENDING) → admin aprueba → ProviderWallet.balance -= amount
 model Withdrawal {
-  id           String   @id @default(uuid())
-  technicianId String
-  amount       Float
-  bankName     String?
-  accountNumber String?
-  status       RechargeStatus @default(PENDING)
-  createdAt    DateTime @default(now())
+  id               String           @id @default(uuid())
+  providerWalletId String                             // Wallet de la especialidad de donde se retira
+  amount           Float                              // Monto a retirar
+  bankName         String?                            // Nombre del banco destino
+  accountNumber    String?                            // Número de cuenta bancaria destino
+  status           WithdrawalStatus @default(PENDING) // Estado del retiro
+  createdAt        DateTime         @default(now())
 
-  technician   Technician @relation(fields: [technicianId], references: [id])
+  providerWallet ProviderWallet  @relation(fields: [providerWalletId], references: [id]) // Wallet de donde se descuenta el saldo
 }
 
+/// Núcleo del negocio. Representa un servicio solicitado por un cliente.
+/// Conecta al cliente con un ProviderService específico.
+/// Estados: SEARCHING → ASSIGNED → ON_WAY → IN_PROGRESS → COMPLETED | CANCELLED
 model Service {
-  id           String        @id @default(uuid())
-  clientId     String
-  technicianId String?
-  category     Category
-  description  String
-  address      String
-  latitude     Float
-  longitude    Float
-  status       ServiceStatus @default(SEARCHING)
-  price        Float
-  commission   Float
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                String          @id @default(uuid())
+  clientId          String                          // Cliente que solicitó el servicio
+  providerServiceId String?                         // Especialidad asignada (null hasta que se asigne)
+  serviceTypeId     String                          // Tipo de servicio solicitado
+  description       String                          // Descripción del problema o trabajo a realizar
+  address           String                          // Dirección donde se realiza el servicio
+  latitude          Float                           // Coordenadas para mostrar en el mapa
+  longitude         Float                           // Coordenadas para mostrar en el mapa
+  status            ServiceStatus   @default(SEARCHING) // Estado actual del servicio
+  price             Float                           // Precio acordado del servicio
+  commission        Float                           // Comisión cobrada por la plataforma (price * commissionRate)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  client       User          @relation("ClientServices", fields: [clientId], references: [id])
-  technician   Technician?   @relation("TechnicianServices", fields: [technicianId], references: [id])
-  messages     Message[]
-  calls        Call[]
-  rating       Rating?
+  client          User             @relation("ClientServices", fields: [clientId], references: [id])          // Cliente que solicitó
+  providerService ProviderService? @relation("ProviderServices", fields: [providerServiceId], references: [id]) // Especialidad asignada al servicio
+  serviceType     ServiceType      @relation(fields: [serviceTypeId], references: [id])                        // Categoría del servicio
+  messages        Message[]                                                                                     // Chat del servicio
+  calls           Call[]                                                                                        // Llamadas realizadas durante el servicio
+  rating          Rating?                                                                                       // Calificación del cliente al finalizar
 }
 
+/// Mensajes del chat dentro de un servicio activo.
+/// Cliente y provider se comunican a través de estos mensajes durante el servicio.
 model Message {
   id        String      @id @default(uuid())
-  serviceId String
-  senderId  String
-  content   String
-  type      MessageType @default(TEXT)
-  read      Boolean     @default(false)
+  serviceId String                       // Servicio al que pertenece este mensaje
+  senderId  String                       // Usuario que envió el mensaje
+  content   String                       // Texto del mensaje o URL del archivo (imagen/audio)
+  type      MessageType @default(TEXT)   // Tipo de contenido del mensaje
+  read      Boolean     @default(false)  // true = el receptor ya lo leyó
   createdAt DateTime    @default(now())
 
-  service   Service     @relation(fields: [serviceId], references: [id])
-  sender    User        @relation("SentMessages", fields: [senderId], references: [id])
+  service   Service     @relation(fields: [serviceId], references: [id])                    // Servicio al que pertenece el mensaje
+  sender    User        @relation("SentMessages", fields: [senderId], references: [id])    // Usuario que envió el mensaje
 }
 
+/// Registro de llamadas de voz o video entre cliente y provider durante un servicio.
 model Call {
   id         String     @id @default(uuid())
-  serviceId  String
-  callerId   String
-  receiverId String
-  type       CallType
-  status     CallStatus @default(INITIATED)
-  startedAt  DateTime?
-  endedAt    DateTime?
-  duration   Int?
+  serviceId  String               // Servicio en el contexto del cual ocurre la llamada
+  callerId   String               // Usuario que inició la llamada
+  receiverId String               // Usuario que recibe la llamada
+  type       CallType             // VOICE o VIDEO
+  status     CallStatus @default(INITIATED) // Estado actual de la llamada
+  startedAt  DateTime?            // Momento en que el receptor aceptó la llamada
+  endedAt    DateTime?            // Momento en que terminó la llamada
+  duration   Int?                 // Duración en segundos (calculado al terminar)
   createdAt  DateTime   @default(now())
 
-  service    Service    @relation(fields: [serviceId], references: [id])
+  service    Service    @relation(fields: [serviceId], references: [id]) // Servicio en el que ocurrió la llamada
 }
 
+/// Calificación que el cliente da al provider después de completar un servicio.
+/// Solo una calificación por servicio. Al crearse, se recalcula ProviderService.rating automáticamente.
 model Rating {
-  id        String  @id @default(uuid())
-  serviceId String  @unique
-  score     Int
-  comment   String?
+  id        String   @id @default(uuid())
+  serviceId String   @unique           // Un solo Rating por servicio
+  clientId  String                     // Cliente que calificó
+  score     Int                        // Puntuación del 1 al 5
+  comment   String?                    // Comentario opcional del cliente
   createdAt DateTime @default(now())
 
-  service   Service @relation(fields: [serviceId], references: [id])
+  service   Service  @relation(fields: [serviceId], references: [id])                   // Servicio que se calificó
+  client    User     @relation("ClientRatings", fields: [clientId], references: [id])  // Cliente que dio la calificación
 }

@@ -14,16 +14,24 @@ async function bootstrap() {
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000'
   ).replace(/\/$/, '');
 
-  app.use((req, res, next) => {
-    const { method, originalUrl } = req;
-    const startTime = Date.now();
-    res.on('finish', () => {
-      const { statusCode } = res;
-      const responseTime = Date.now() - startTime;
-      logger.log(`${method} ${originalUrl} ${statusCode} - ${responseTime}ms`);
-    });
-    next();
-  });
+  app.use(
+    (
+      req: { method: string; originalUrl: string },
+      res: { statusCode: number; on: (event: string, cb: () => void) => void },
+      next: () => void,
+    ) => {
+      const { method, originalUrl } = req;
+      const startTime = Date.now();
+      res.on('finish', () => {
+        const { statusCode } = res;
+        const responseTime = Date.now() - startTime;
+        logger.log(
+          `${method} ${originalUrl} ${statusCode} - ${responseTime}ms`,
+        );
+      });
+      next();
+    },
+  );
 
   app.enableCors({
     origin: [
@@ -59,8 +67,22 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   await app.listen(port, '0.0.0.0');
-  logger.log(`🚀 Servidor corriendo en http://localhost:${port}`);
-  logger.log(`🌐 CORS habilitado para: ${frontendUrl}`);
-  logger.log(`📚 Docs en http://localhost:${port}/docs`);
+
+  const env = configService.get<string>('NODE_ENV') ?? 'development';
+  const dbUrl = configService.get<string>('DATABASE_URL') ?? '';
+  const dbHost = dbUrl ? new URL(dbUrl).hostname : 'no configurada';
+
+  logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.log('          HOOMFIX BACKEND  —  INICIADO              ');
+  logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.log(`  Entorno     : ${env}`);
+  logger.log(`  Servidor    : http://localhost:${port}`);
+  logger.log(`  Docs API    : http://localhost:${port}/docs`);
+  logger.log(`  Base datos  : ${dbHost}`);
+  logger.log(`  CORS        : ${frontendUrl}`);
+  logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
-void bootstrap();
+bootstrap().catch((err) => {
+  console.error('ERROR AL INICIAR EL SERVIDOR:', err);
+  process.exit(1);
+});

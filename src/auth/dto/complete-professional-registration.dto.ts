@@ -1,13 +1,8 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { Category } from '@prisma/client';
+import { IsOptional, IsString } from 'class-validator';
 
 export class CompleteProfessionalRegistrationDto {
-  @IsEnum(Category)
-  category: Category;
-
-  @IsOptional()
   @IsString()
-  documentUrl?: string;
+  serviceTypeId: string;
 
   @IsOptional()
   @IsString()
