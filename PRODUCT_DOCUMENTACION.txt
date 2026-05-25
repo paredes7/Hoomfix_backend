@@ -2,7 +2,7 @@
           DOCUMENTACIÓN DE PRODUCTO - HOOMFIX
 ================================================================
 Fecha: 25/05/2026
-Versión: 1.0
+Versión: 1.1
 ================================================================
 
 
@@ -31,8 +31,19 @@ Por cada servicio completado, Hoomfix cobra una comisión:
   Ganancia provider:   Bs. 85   → va al ProviderWallet
 
 El porcentaje de comisión es configurable desde SystemConfig.
-El tipo de cambio USD/BOB también es configurable para mercados
-internacionales.
+
+SISTEMA DE MONEDAS:
+  Los paquetes de recarga se almacenan en USD (moneda base).
+  Al mostrarlos al usuario se convierten automáticamente a su
+  moneda local usando la tabla ExchangeRate.
+
+  Ejemplo:
+    Paquete Pro = 10 USD
+    Cliente Bolivia → 10 × 6.96 = 69.60 BOB
+    Cliente Perú    → 10 × 3.70 = 37.00 PEN
+
+  El admin gestiona los tipos de cambio desde el panel (ExchangeRate).
+  Un solo catálogo de paquetes sirve para todos los países.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -44,14 +55,18 @@ internacionales.
 ├─────────────┼──────────────────────────────────────────────┤
 │ CLIENT      │ Persona que solicita servicios del hogar.    │
 │             │ Tiene wallet para pagar servicios.           │
+│             │ Puede recargar saldo comprando paquetes.     │
 ├─────────────┼──────────────────────────────────────────────┤
 │ PROVIDER    │ Técnico que ofrece servicios. Puede tener    │
 │             │ múltiples especialidades verificadas.        │
 │             │ Cada especialidad tiene su propia wallet.    │
+│             │ Puede comprar paquetes para recargar         │
+│             │ el saldo de una especialidad específica.     │
 ├─────────────┼──────────────────────────────────────────────┤
 │ ADMIN       │ Administrador de la plataforma. Aprueba      │
 │             │ providers, recargas, retiros y gestiona      │
-│             │ el catálogo de servicios.                    │
+│             │ el catálogo de servicios, paquetes y         │
+│             │ tipos de cambio.                             │
 └─────────────┴──────────────────────────────────────────────┘
 
 
@@ -70,6 +85,7 @@ CLIENTE se registra con:
      El dialCode (+591) y la moneda (BOB) se obtienen de la tabla Country
   → Sistema genera username automáticamente desde el email
      Ej: carlos.mamani@gmail.com → carlosmamani
+     Solo letras y números. Si ya existe agrega número al final.
   → Se crea ClientContact con phone + FK a Country
   → Se crea ClientWallet automáticamente (saldo: 0)
      La moneda se lee desde Country.currency al momento de mostrar el saldo
@@ -102,20 +118,21 @@ y disponibilidad.
 Modelo similar a Uber — un solo login, múltiples modalidades de trabajo.
 
 Cada especialidad se compone de dos tablas:
-  → ProviderService       — datos operativos (estado, ubicación, rating)
-  → ProviderServiceProfile — datos de presentación (teléfono, bio, foto, etc.)
+  → ProviderService        — datos operativos (teléfono, estado, ubicación, rating)
+  → ProviderServiceProfile — datos de presentación (bio, foto, nombre personalizado, etc.)
 
 Pasos:
   1. Provider elige un ServiceType disponible
      (Gasfitería, Electricidad, Carpintería, etc.)
 
-  2. Completa el perfil de la especialidad (ProviderServiceProfile):
+  2. Completa los datos operativos de la especialidad (ProviderService):
        - Teléfono de contacto para esta especialidad
        - País del teléfono elegido del combo box (phoneCountryIso)
          El dialCode y moneda se obtienen de la tabla Country
          (puede ser diferente al de otras especialidades)
-         phoneCountryIso se guarda en ProviderService porque define
-         la moneda del ProviderWallet — no cambia después
+         phoneCountryIso define la moneda del ProviderWallet — no cambia después
+
+  3. Completa el perfil de presentación (ProviderServiceProfile):
        - Bio profesional específica para esta especialidad
        - Años de experiencia en esta especialidad
        - Radio máximo de cobertura en kilómetros
@@ -124,31 +141,31 @@ Pasos:
          Ej: "Plomería Express", "Electricista 24h"
        - Foto del servicio (opcional, subida vía Cloudinary)
 
-  3. Sube documentos de verificación (uno por uno vía Cloudinary):
+  4. Sube documentos de verificación (uno por uno vía Cloudinary):
        - Certificados, títulos, carnets profesionales, etc.
        - Cada documento se guarda en ProviderDocument con su URL
          y publicId de Cloudinary para eliminarlo o reemplazarlo
          individualmente
 
-  4. La especialidad queda en estado PENDING
+  5. La especialidad queda en estado PENDING
      → Admin recibe notificación para revisar
 
-  5. Admin revisa los documentos subidos y decide:
+  6. Admin revisa los documentos subidos y decide:
        - APPROVED → provider puede activar disponibilidad
        - REJECTED → provider debe corregir y volver a postularse
 
-  6. Con estado APPROVED el provider puede:
+  7. Con estado APPROVED el provider puede:
        - Activar/desactivar su disponibilidad (available: true/false)
        - Actualizar su ubicación en tiempo real (lat/lng)
          Ambos campos viven en ProviderService — son datos operativos
        - Recibir solicitudes de servicio de clientes cercanos
        - Acumular ganancias en su ProviderWallet
        - Editar su ProviderServiceProfile libremente
-         (teléfono, bio, foto, nombre personalizado, etc.)
+         (bio, foto, nombre personalizado, etc.)
 
-  7. Se crea ProviderWallet automáticamente al postularse (saldo: 0)
+  8. Se crea ProviderWallet automáticamente al postularse (saldo: 0)
      La moneda se deriva del phoneCountryIso guardado en ProviderService
-     (BO → BOB, US → USD, PE → PEN)
+     (BO → BOB, US → USD, PE → PEN) consultando la tabla Country
 
 Restricción: Un provider no puede postularse dos veces a la misma
 especialidad. El sistema lo bloquea con @@unique([userId, serviceTypeId]).
@@ -162,15 +179,34 @@ El cliente necesita saldo en su wallet para pagar servicios.
 
 Pasos:
   1. Cliente ve lista de paquetes disponibles (creados por admin)
-     Ej: Paquete 50, Paquete 100, Paquete 200
+     Ej: Paquete Básico (10 USD), Paquete Pro (20 USD)
+     Los montos se muestran convertidos a la moneda del cliente
+     usando ExchangeRate. Ej: 10 USD = 69.60 BOB para Bolivia.
   2. Cliente elige un paquete → se crea Recharge (PENDING)
   3. Admin aprueba la recarga
-  4. ClientWallet.balance += package.amount
-  5. Cliente recibe notificación (push + email)
+  4. Backend calcula: amountUsd × ExchangeRate.rate = monto local
+  5. ClientWallet.balance += monto local
+  6. Cliente recibe notificación (push + email)
 
 
 ────────────────────────────────────────
-4.4 SOLICITUD Y CICLO DE SERVICIO
+4.4 RECARGA DE SALDO (PROVIDER)
+────────────────────────────────────────
+
+El provider también puede comprar paquetes para recargar el saldo
+de una especialidad específica.
+
+Pasos:
+  1. Provider elige un paquete → se crea ProviderPurchase (PENDING)
+     vinculado al ProviderWallet de la especialidad elegida
+  2. Admin aprueba la compra
+  3. Backend calcula: amountUsd × ExchangeRate.rate = monto local
+  4. ProviderWallet.balance += monto local
+  5. Provider recibe notificación (push + email)
+
+
+────────────────────────────────────────
+4.5 SOLICITUD Y CICLO DE SERVICIO
 ────────────────────────────────────────
 
 BÚSQUEDA DE PROVIDER:
@@ -213,7 +249,7 @@ COMUNICACIÓN DURANTE EL SERVICIO:
 
 
 ────────────────────────────────────────
-4.5 PAGO AL COMPLETAR SERVICIO
+4.6 PAGO AL COMPLETAR SERVICIO
 ────────────────────────────────────────
 
   precio_servicio = acordado entre cliente y provider
@@ -224,15 +260,15 @@ COMUNICACIÓN DURANTE EL SERVICIO:
   ProviderWallet.balance  += ganancia_neta
 
   Si el cliente y provider usan monedas distintas:
-  → Se aplica SystemConfig.exchangeRateUsdBob para conversión
+  → Se consulta ExchangeRate para la conversión
 
   La moneda de cada wallet se determina por:
-  → Cliente  : ClientContact.phoneCountryIso
-  → Provider : ProviderService.phoneCountryIso
+  → Cliente  : ClientContact.phoneCountryIso → Country.currency
+  → Provider : ProviderService.phoneCountryIso → Country.currency
 
 
 ────────────────────────────────────────
-4.6 CALIFICACIÓN
+4.7 CALIFICACIÓN
 ────────────────────────────────────────
 
   Solo disponible cuando el servicio está COMPLETED.
@@ -245,7 +281,7 @@ COMUNICACIÓN DURANTE EL SERVICIO:
 
 
 ────────────────────────────────────────
-4.7 RETIRO DE GANANCIAS (PROVIDER)
+4.8 RETIRO DE GANANCIAS (PROVIDER)
 ────────────────────────────────────────
 
   El provider solicita retirar el saldo de una especialidad específica.
@@ -279,18 +315,29 @@ El admin gestiona toda la plataforma:
     → Crear nuevas categorías (ServiceType)
     → Activar o desactivar categorías
 
+  PAÍSES
+    → Ver lista de países (Country)
+    → Activar o desactivar países del combo box
+
+  TIPOS DE CAMBIO
+    → Gestionar tasas de conversión (ExchangeRate)
+    → Ej: USD → BOB = 6.96 / USD → PEN = 3.70
+    → Se usan al acreditar recargas en la moneda local del usuario
+
   PAQUETES DE RECARGA
-    → Crear paquetes de recarga (Package)
+    → Crear paquetes de recarga (Package) con precio en USD
     → Activar o desactivar paquetes
 
-  RECARGAS
-    → Aprobar o rechazar solicitudes de recarga de clientes
+  RECARGAS DE CLIENTES
+    → Aprobar o rechazar solicitudes de recarga (Recharge)
+
+  COMPRAS DE PROVIDERS
+    → Aprobar o rechazar compras de paquetes (ProviderPurchase)
 
   RETIROS
-    → Aprobar o rechazar solicitudes de retiro de providers
+    → Aprobar o rechazar solicitudes de retiro de providers (Withdrawal)
 
   CONFIGURACIÓN GLOBAL (SystemConfig)
-    → Ajustar tipo de cambio USD/BOB
     → Ajustar comisión de la plataforma
     → Ajustar máximo de trabajos simultáneos por provider
 
@@ -310,6 +357,7 @@ El admin gestiona toda la plataforma:
   EMAIL (respaldo y eventos administrativos):
     → Especialidad aprobada o rechazada
     → Recarga aprobada o rechazada
+    → Compra de paquete aprobada o rechazada (provider)
     → Retiro aprobado o rechazado
     → Cuenta suspendida
     → Código de recuperación de contraseña
@@ -330,5 +378,6 @@ El admin gestiona toda la plataforma:
   Documentación API: Swagger (disponible en /docs)
   Hosting DB   : Neon (serverless PostgreSQL)
   Países/monedas: Tabla Country gestionada por admin + seed inicial
+  Tipos de cambio: Tabla ExchangeRate gestionada por admin
 
 ================================================================

@@ -34,7 +34,9 @@ CallStatus     → INITIATED | ACCEPTED | REJECTED | ENDED | MISSED
                Estado de una llamada en tiempo real.
 
 RechargeStatus → PENDING | APPROVED | REJECTED
-               Estado de una recarga de saldo en la billetera del cliente.
+               Estado de una recarga de saldo. Se usa en dos modelos:
+               - Recharge       → recarga del ClientWallet del cliente
+               - ProviderPurchase → recarga del ProviderWallet del provider
 
 WithdrawalStatus → PENDING | APPROVED | REJECTED
                Estado de una solicitud de retiro de ganancias del provider.
@@ -53,11 +55,13 @@ de país al registrarse. Define el código de marcado y la moneda
 local de cada país. Se llena inicialmente con el seed.
 
 Campos:
-  - iso      → Código ISO del país, clave primaria (ej: BO, US, PE)
-  - dialCode → Código de marcado telefónico (ej: +591, +1, +51)
-  - name     → Nombre del país (ej: Bolivia, Estados Unidos)
-  - currency → Moneda local del país (ej: BOB, USD, PEN)
-  - active   → false = no aparece en el combo box del frontend
+  - iso       → Código ISO del país, clave primaria (ej: BO, US, PE)
+  - dialCode  → Código de marcado telefónico (ej: +591, +1, +51)
+  - name      → Nombre del país (ej: Bolivia, Estados Unidos)
+  - currency  → Moneda local del país (ej: BOB, USD, PEN)
+  - active    → false = no aparece en el combo box del frontend
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
   - clientContacts   → Clientes que pertenecen a este país
@@ -74,12 +78,44 @@ Propósito: Configuración global del sistema. Solo existe UN registro.
 El admin lo actualiza cuando necesita ajustar parámetros globales.
 
 Campos:
-  - exchangeRateUsdBob  → Tipo de cambio USD a BOB (ej: 6.96)
-  - commissionRate      → Comisión que cobra la plataforma por servicio (0.15 = 15%)
-  - maxConcurrentJobs   → Máximo de trabajos simultáneos por especialidad (ej: 2)
-  - updatedAt           → Última actualización
+  - commissionRate    → Comisión que cobra la plataforma por servicio (0.15 = 15%)
+  - maxConcurrentJobs → Máximo de trabajos simultáneos por especialidad (ej: 2)
+  - updatedAt         → Última actualización
 
 Relaciones: Ninguna (tabla de configuración independiente)
+
+Nota: exchangeRateUsdBob fue eliminado de este modelo.
+      Los tipos de cambio ahora viven en la tabla ExchangeRate,
+      que soporta múltiples monedas (no solo USD→BOB).
+
+
+────────────────────────────────────────
+EXCHANGERATE
+────────────────────────────────────────
+Propósito: Tipos de cambio para convertir paquetes de USD a la moneda
+local del cliente o provider. El admin actualiza las tasas desde el panel.
+Siempre fromCurrency = "USD".
+
+Campos:
+  - fromCurrency → Moneda origen (siempre "USD")
+  - toCurrency   → Moneda destino (ej: "BOB", "PEN", "ARS")
+  - rate         → Tasa de conversión (ej: 6.96 para USD → BOB)
+  - createdAt    → Fecha de creación
+  - updatedAt    → Última actualización
+
+Restricción: @@unique([fromCurrency, toCurrency])
+             No puede haber dos tasas para el mismo par de monedas.
+
+Relaciones: Ninguna (tabla de referencia consultada en código)
+
+Ejemplo de datos:
+  USD → BOB  rate: 6.96
+  USD → PEN  rate: 3.70
+  USD → ARS  rate: 900.00
+
+Uso en el flujo de recargas:
+  Package.amountUsd × ExchangeRate.rate = monto en moneda local
+  Ej: 10 USD × 6.96 = 69.60 BOB acreditados al ClientWallet
 
 
 ────────────────────────────────────────
@@ -93,6 +129,8 @@ Campos:
   - icon        → URL o nombre del ícono para la app
   - description → Descripción del tipo de servicio
   - active      → false = no aparece en la app para nuevos servicios
+  - createdAt   → Fecha de creación
+  - updatedAt   → Última actualización
 
 Relaciones:
   - providerServices → Providers registrados en esta categoría
@@ -108,8 +146,8 @@ viven en ClientProfile o ProviderProfile.
 
 Campos:
   - email               → Correo para iniciar sesión (único, obligatorio)
-  - username            → Generado automáticamente desde el email al registrarse
-                          Solo letras y números. Si ya existe agrega número al final
+  - username            → Generado automáticamente desde el email al registrarse.
+                          Solo letras y números. Si ya existe agrega número al final.
                           Ej: carlos.mamani@gmail.com → carlosmamani
   - password            → Hash bcrypt de la contraseña
   - role                → CLIENT | PROVIDER | ADMIN
@@ -117,6 +155,8 @@ Campos:
   - fcmToken            → Token Firebase para notificaciones push
   - resetPasswordToken  → Hash del código de recuperación de contraseña
   - resetPasswordExpiry → Expiración del código de recuperación (15 minutos)
+  - createdAt           → Fecha de creación
+  - updatedAt           → Última actualización
 
 Login soporta 3 opciones:
   1. email + contraseña
@@ -124,13 +164,13 @@ Login soporta 3 opciones:
   3. Google OAuth
 
 Relaciones:
-  - clientProfile   → 1 a 1 opcional. Existe si role = CLIENT
-  - clientContact   → 1 a 1 opcional. Existe si role = CLIENT
-  - providerProfile → 1 a 1 opcional. Existe si role = PROVIDER
+  - clientProfile    → 1 a 1 opcional. Existe si role = CLIENT
+  - clientContact    → 1 a 1 opcional. Existe si role = CLIENT
+  - providerProfile  → 1 a 1 opcional. Existe si role = PROVIDER
   - providerServices → 1 a muchos. Especialidades si role = PROVIDER
-  - sentMessages    → Mensajes enviados en servicios
-  - clientServices  → Servicios solicitados (solo clientes)
-  - ratings         → Calificaciones dadas (solo clientes)
+  - sentMessages     → Mensajes enviados en servicios
+  - clientServices   → Servicios solicitados (solo clientes)
+  - ratings          → Calificaciones dadas (solo clientes)
 
 
 ────────────────────────────────────────
@@ -144,6 +184,8 @@ Campos:
   - phone           → Número de teléfono único en la plataforma
   - phoneCountryIso → FK a Country — el dialCode y moneda se obtienen
                       haciendo JOIN con la tabla Country
+  - createdAt       → Fecha de creación
+  - updatedAt       → Última actualización
 
 Relaciones:
   - user    → Pertenece a un User (1 a 1)
@@ -161,9 +203,13 @@ Campos:
   - lastName       → Apellido
   - avatar         → URL pública de la foto de perfil en Cloudinary
   - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
-  - billingRegion  → Región de facturación (opcional)
   - referralCode   → Código único para referir a otros usuarios
   - lastLoginAt    → Último inicio de sesión
+  - createdAt      → Fecha de creación
+  - updatedAt      → Última actualización
+
+Nota: billingRegion fue eliminado. La región se deriva de
+      ClientContact.phoneCountryIso → Country.
 
 Relaciones:
   - clientWallet → Billetera para pagar servicios (1 a 1)
@@ -183,6 +229,8 @@ Campos:
   - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
   - referralCode   → Código único para referir a otros usuarios
   - lastLoginAt    → Último inicio de sesión
+  - createdAt      → Fecha de creación
+  - updatedAt      → Última actualización
 
 Relaciones:
   - user → Pertenece a un User (1 a 1)
@@ -205,14 +253,20 @@ dos veces la misma especialidad.
 Campos:
   - userId          → Provider al que pertenece esta especialidad
   - serviceTypeId   → Tipo de servicio (Gasfitería, Electricidad, etc.)
-  - phoneCountryIso → FK a Country — define dialCode y moneda del ProviderWallet
-                      No cambia después de postularse (afecta la moneda del wallet)
+  - phone           → Teléfono de contacto para esta especialidad (dato operativo)
+  - phoneCountryIso → FK a Country — define dialCode y moneda del ProviderWallet.
+                      No cambia después de postularse (afecta la moneda del wallet).
   - status          → PENDING | APPROVED | REJECTED (el admin verifica documentos)
   - available       → true = disponible para recibir nuevos trabajos ahora mismo
   - rating          → Promedio de calificaciones (0.0 a 5.0)
   - totalRatings    → Cantidad total de calificaciones recibidas
   - latitude        → Ubicación actual para encontrar el provider más cercano
   - longitude       → Ubicación actual
+  - createdAt       → Fecha de creación
+  - updatedAt       → Última actualización
+
+Nota: phone vive aquí (dato operativo) y NO en ProviderServiceProfile
+      (dato de presentación). Así teléfono y país están siempre juntos.
 
 Relaciones:
   - user           → Pertenece a un User
@@ -231,17 +285,25 @@ Propósito: Datos de PRESENTACIÓN de una especialidad. Contiene todo
 lo que el cliente ve y lo que el provider puede editar libremente.
 Se crea al postularse junto con ProviderService.
 
+Separación de responsabilidades:
+  ProviderService        → datos operativos (phone, estado, ubicación, rating)
+  ProviderServiceProfile → datos de presentación (bio, foto, nombre personalizado)
+
 Campos:
-  - providerServiceId  → FK a ProviderService (1 a 1)
-  - phone              → Teléfono de contacto (editable, no afecta la moneda)
-  - bio                → Descripción profesional para esta especialidad
-  - experience         → Años de experiencia
-  - coverageRadius     → Radio máximo de cobertura en kilómetros
-  - commercialName     → Nombre del negocio o marca (opcional)
-  - customServiceName  → Nombre personalizado del servicio
-                         Ej: "Plomería Express", "Electricista 24h"
-  - servicePhoto       → URL pública de la foto del servicio en Cloudinary
+  - providerServiceId    → FK a ProviderService (1 a 1)
+  - bio                  → Descripción profesional para esta especialidad
+  - experience           → Años de experiencia
+  - coverageRadius       → Radio máximo de cobertura en kilómetros
+  - commercialName       → Nombre del negocio o marca (opcional)
+  - customServiceName    → Nombre personalizado del servicio
+                           Ej: "Plomería Express", "Electricista 24h"
+  - servicePhoto         → URL pública de la foto del servicio en Cloudinary
   - servicePhotoPublicId → public_id de Cloudinary para reemplazar o eliminar la foto
+  - createdAt            → Fecha de creación
+  - updatedAt            → Última actualización
+
+Nota: phone fue eliminado de este modelo y movido a ProviderService,
+      donde vive junto a phoneCountryIso (ambos son datos operativos).
 
 Relaciones:
   - providerService → Pertenece a un ProviderService (1 a 1)
@@ -259,6 +321,8 @@ Campos:
   - url               → URL pública del documento en Cloudinary
   - publicId          → public_id de Cloudinary para eliminar o reemplazar
   - name              → Nombre descriptivo (ej: "Certificado de electricista")
+  - createdAt         → Fecha de creación
+  - updatedAt         → Última actualización
 
 Relaciones:
   - providerService → Pertenece a un ProviderService
@@ -269,15 +333,18 @@ CLIENTWALLET
 ────────────────────────────────────────
 Propósito: Billetera del cliente. Solo para pagar servicios.
 Recibe recargas aprobadas por el admin.
-La moneda se deriva de ClientContact.phoneCountryIso (no se almacena).
+La moneda se deriva de ClientContact.phoneCountryIso → Country.currency
+(no se almacena en la wallet — se obtiene por JOIN).
 
 Campos:
   - clientProfileId → Cliente dueño de esta billetera
   - balance         → Saldo disponible para pagar servicios
+  - createdAt       → Fecha de creación
+  - updatedAt       → Última actualización
 
 Relaciones:
   - clientProfile → Pertenece a un ClientProfile (1 a 1)
-  - recharges     → Historial de recargas
+  - recharges     → Historial de recargas del cliente
 
 
 ────────────────────────────────────────
@@ -286,30 +353,42 @@ PROVIDERWALLET
 Propósito: Billetera del provider por especialidad. Acumula ganancias
 de servicios completados. Cada especialidad tiene su propia wallet
 independiente.
-La moneda se deriva de ProviderService.phoneCountryIso (no se almacena).
+La moneda se deriva de ProviderService.phoneCountryIso → Country.currency
+(no se almacena en la wallet — se obtiene por JOIN).
 
 Campos:
   - providerServiceId → Especialidad dueña de esta billetera
   - balance           → Ganancias acumuladas pendientes de retiro
+  - createdAt         → Fecha de creación
+  - updatedAt         → Última actualización
 
 Relaciones:
   - providerService → Pertenece a un ProviderService (1 a 1)
   - withdrawals     → Historial de retiros
+  - purchases       → Historial de recargas del provider (ProviderPurchase)
 
 
 ────────────────────────────────────────
 PACKAGE
 ────────────────────────────────────────
-Propósito: Paquetes de recarga que el admin crea. El cliente elige
-uno para recargar su ClientWallet. Funciona como tarjeta prepago.
+Propósito: Paquetes de recarga que el admin crea. Tanto clientes como
+providers pueden comprar paquetes para recargar su wallet.
+El precio base está en USD y se convierte automáticamente a la moneda
+local del usuario usando la tabla ExchangeRate.
 
 Campos:
-  - name   → Nombre del paquete (ej: "Paquete 50", "Paquete 100")
-  - amount → Monto que se acredita al ClientWallet al aprobarse
-  - active → false = no aparece para los clientes
+  - name      → Nombre del paquete (ej: "Paquete Básico", "Paquete Pro")
+  - amountUsd → Precio base en USD (ej: 10.00). Se convierte al mostrar.
+  - active    → false = no aparece para los usuarios
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
+
+Nota: El campo anterior era 'amount'. Renombrado a 'amountUsd' para
+      dejar claro que el valor siempre está en dólares.
 
 Relaciones:
-  - recharges → Recargas que usaron este paquete
+  - recharges         → Recargas de clientes que usaron este paquete
+  - providerPurchases → Compras de providers que usaron este paquete
 
 
 ────────────────────────────────────────
@@ -317,16 +396,43 @@ RECHARGE
 ────────────────────────────────────────
 Propósito: Registro de cada recarga de saldo que hace un cliente.
 Flujo: Cliente elige Package → Recharge (PENDING) →
-admin aprueba → ClientWallet.balance += package.amount
+admin aprueba → ClientWallet.balance += package.amountUsd × ExchangeRate.rate
 
 Campos:
   - clientWalletId → Wallet del cliente que recarga
   - packageId      → Paquete elegido por el cliente
   - status         → PENDING | APPROVED | REJECTED
+  - createdAt      → Fecha de creación
+  - updatedAt      → Última actualización
 
 Relaciones:
   - clientWallet → Pertenece a un ClientWallet
   - package      → Pertenece a un Package
+
+
+────────────────────────────────────────
+PROVIDERPURCHASE
+────────────────────────────────────────
+Propósito: Registro de cada recarga de saldo que hace un provider.
+El provider compra un paquete para acreditar saldo en el ProviderWallet
+de una especialidad específica.
+Flujo: Provider elige Package → ProviderPurchase (PENDING) →
+admin aprueba → ProviderWallet.balance += package.amountUsd × ExchangeRate.rate
+
+Campos:
+  - providerWalletId → Wallet del provider que recarga
+  - packageId        → Paquete elegido por el provider
+  - status           → PENDING | APPROVED | REJECTED (usa RechargeStatus)
+  - createdAt        → Fecha de creación
+  - updatedAt        → Última actualización
+
+Nota: Usa el mismo enum RechargeStatus que Recharge porque los estados
+      son idénticos. Tabla separada porque el FK apunta a ProviderWallet
+      en lugar de ClientWallet — semánticamente son operaciones distintas.
+
+Relaciones:
+  - providerWallet → Pertenece a un ProviderWallet
+  - package        → Pertenece a un Package
 
 
 ────────────────────────────────────────
@@ -343,6 +449,8 @@ Campos:
   - bankName         → Nombre del banco destino
   - accountNumber    → Número de cuenta bancaria destino
   - status           → PENDING | APPROVED | REJECTED
+  - createdAt        → Fecha de creación
+  - updatedAt        → Última actualización
 
 Relaciones:
   - providerWallet → Pertenece a un ProviderWallet
@@ -371,8 +479,14 @@ Campos:
   - latitude          → Coordenadas para el mapa
   - longitude         → Coordenadas para el mapa
   - status            → Estado actual del servicio
-  - price             → Precio acordado del servicio
+  - price             → Precio acordado del servicio (null en estado SEARCHING)
   - commission        → Comisión cobrada (price * SystemConfig.commissionRate)
+                        (null hasta que se complete el servicio y se acuerde el precio)
+  - createdAt         → Fecha de creación
+  - updatedAt         → Última actualización
+
+Nota: price y commission son Float? (nullable) porque el precio se
+      desconoce en el estado SEARCHING — solo se define al acordar con el provider.
 
 Relaciones:
   - client          → Pertenece a un User (cliente)
@@ -395,6 +509,8 @@ Campos:
   - content   → Texto o URL del archivo (imagen/audio)
   - type      → TEXT | IMAGE | AUDIO
   - read      → true = el receptor ya lo leyó
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
   - service → Pertenece a un Service
@@ -416,6 +532,8 @@ Campos:
   - startedAt  → Momento en que el receptor aceptó
   - endedAt    → Momento en que terminó
   - duration   → Duración en segundos (calculado al terminar)
+  - createdAt  → Fecha de creación
+  - updatedAt  → Última actualización
 
 Relaciones:
   - service → Pertenece a un Service
@@ -435,6 +553,8 @@ Campos:
   - clientId  → Cliente que calificó
   - score     → Puntuación del 1 al 5
   - comment   → Comentario opcional
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
   - service → Pertenece a un Service (1 a 1)
@@ -448,15 +568,15 @@ Relaciones:
 User (1) ──────── (1) ClientProfile
 User (1) ──────── (1) ClientContact
 User (1) ──────── (1) ProviderProfile
-User (1) ──────── (N) ProviderService    [una por especialidad]
-User (1) ──────── (N) Message            [mensajes enviados]
-User (1) ──────── (N) Service            [servicios solicitados]
-User (1) ──────── (N) Rating             [calificaciones dadas]
+User (1) ──────── (N) ProviderService      [una por especialidad]
+User (1) ──────── (N) Message              [mensajes enviados]
+User (1) ──────── (N) Service              [servicios solicitados]
+User (1) ──────── (N) Rating               [calificaciones dadas]
 
-Country (1) ──────── (N) ClientContact   [país del cliente]
-Country (1) ──────── (N) ProviderService [país de la especialidad]
+Country (1) ──────── (N) ClientContact     [país del cliente]
+Country (1) ──────── (N) ProviderService   [país de la especialidad]
 
-ClientProfile  (1) ── (1) ClientWallet
+ClientProfile   (1) ── (1) ClientWallet
 ProviderService (1) ── (1) ProviderWallet
 ProviderService (1) ── (1) ProviderServiceProfile
 ProviderService (1) ── (N) ProviderDocument
@@ -466,9 +586,11 @@ ProviderService (1) ── (N) Service
 
 ServiceType (1) ── (N) Service
 
-ClientWallet  (1) ── (N) Recharge
+ClientWallet   (1) ── (N) Recharge
 ProviderWallet (1) ── (N) Withdrawal
+ProviderWallet (1) ── (N) ProviderPurchase
 Package        (1) ── (N) Recharge
+Package        (1) ── (N) ProviderPurchase
 
 Service (1) ── (N) Message
 Service (1) ── (N) Call
@@ -481,14 +603,15 @@ Service (1) ── (1) Rating
 
 REGISTRO CLIENTE:
   User (CLIENT) + username generado desde email
-  → ClientContact (phone, dialCode, countryIso)
+  → ClientContact (phone, phoneCountryIso → Country)
   → ClientProfile (firstName, lastName)
   → ClientWallet (balance: 0)
+  La moneda del wallet se obtiene de ClientContact → Country.currency
 
 REGISTRO PROVIDER:
   User (PROVIDER) + username generado desde email
   → ProviderProfile (firstName, lastName)
-  (sin wallet, sin teléfono — se agregan por especialidad)
+  (sin wallet, sin teléfono — se agregan por especialidad al postularse)
 
 LOGIN (3 opciones):
   1. email + contraseña
@@ -498,14 +621,25 @@ LOGIN (3 opciones):
 
 POSTULACIÓN A ESPECIALIDAD:
   Provider elige ServiceType → ProviderService (PENDING)
-  + ProviderServiceProfile (phone, bio, experience, coverageRadius, etc.)
+    con phone + phoneCountryIso (teléfono de esta especialidad)
+  + ProviderServiceProfile (bio, experience, coverageRadius, foto, etc.)
   + sube documentos → ProviderDocument[]
   + ProviderWallet (balance: 0)
+  La moneda del wallet se obtiene de ProviderService → Country.currency
   Admin aprueba → ProviderService (APPROVED)
 
-RECARGA DE SALDO:
+RECARGA DE SALDO (CLIENTE):
   Cliente elige Package → Recharge (PENDING)
-  Admin aprueba → ClientWallet.balance += package.amount
+  Admin aprueba:
+    tasa = ExchangeRate WHERE fromCurrency='USD' AND toCurrency=clientCurrency
+    ClientWallet.balance += package.amountUsd × tasa
+  Ej: 10 USD × 6.96 = 69.60 BOB
+
+RECARGA DE SALDO (PROVIDER):
+  Provider elige Package → ProviderPurchase (PENDING)
+  Admin aprueba:
+    tasa = ExchangeRate WHERE fromCurrency='USD' AND toCurrency=providerCurrency
+    ProviderWallet.balance += package.amountUsd × tasa
 
 SOLICITUD DE SERVICIO:
   Cliente crea Service (SEARCHING) →
@@ -521,7 +655,8 @@ PAGO AL COMPLETAR:
   ClientWallet.balance -= price
   ProviderWallet.balance += (price - commission)
   commission = price * SystemConfig.commissionRate
-  Si monedas distintas → usar SystemConfig.exchangeRateUsdBob
+  Si cliente y provider usan monedas distintas:
+    → usar ExchangeRate para convertir
 
 CALIFICACIÓN:
   Service COMPLETED → Cliente crea Rating →
@@ -541,5 +676,42 @@ RECUPERAR CONTRASEÑA:
   Usuario ingresa email → código de 6 dígitos enviado al correo
   Válido 15 minutos, máximo 5 intentos fallidos
   Usuario ingresa código → nueva contraseña
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. DECISIONES DE DISEÑO IMPORTANTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. MONEDA NUNCA SE ALMACENA EN WALLETS
+   ClientWallet y ProviderWallet no tienen campo currency.
+   La moneda se obtiene siempre por JOIN:
+     Cliente  → ClientContact.phoneCountryIso → Country.currency
+     Provider → ProviderService.phoneCountryIso → Country.currency
+   Esto evita inconsistencias entre la moneda del wallet y el país real.
+
+2. PAQUETES EN USD CON CONVERSIÓN AUTOMÁTICA
+   Package.amountUsd siempre en USD.
+   ExchangeRate convierte al momento de acreditar.
+   Un solo catálogo de paquetes sirve para todos los países.
+
+3. PHONE EN PROVIDERSERVICE (NO EN PROFILE)
+   El teléfono vive en ProviderService junto a phoneCountryIso
+   porque ambos son datos operativos que definen la moneda del wallet.
+   ProviderServiceProfile solo contiene datos de presentación editables.
+
+4. PRICE Y COMMISSION SON NULLABLE EN SERVICE
+   Ambos son Float? porque en el estado SEARCHING el precio
+   aún no se ha acordado entre cliente y provider.
+
+5. WALLETS SEPARADOS POR ROL
+   ClientWallet → pertenece a ClientProfile
+   ProviderWallet → pertenece a ProviderService (uno por especialidad)
+   No hay tabla Wallet genérica con campos nullable — evita nulls innecesarios.
+
+6. RECHARGE Y PROVIDERPURCHASE SON TABLAS SEPARADAS
+   Aunque son similares, apuntan a wallets distintos:
+     Recharge         → clientWalletId → ClientWallet
+     ProviderPurchase → providerWalletId → ProviderWallet
+   Unirlas en una sola tabla requeriría campos nullable según el tipo de usuario.
 
 ================================================================

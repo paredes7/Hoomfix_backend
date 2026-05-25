@@ -50,8 +50,8 @@ enum CallStatus {
 
 enum RechargeStatus {
   PENDING  // Solicitud enviada, esperando aprobación del admin
-  APPROVED // Admin aprobó — saldo acreditado al ClientWallet
-  REJECTED // Admin rechazó la recarga
+  APPROVED // Admin aprobó — saldo acreditado
+  REJECTED // Admin rechazó la solicitud
 }
 
 enum WithdrawalStatus {
@@ -70,19 +70,33 @@ model Country {
   name     String                   // Nombre del país (ej: Bolivia)
   currency String                   // Moneda local (ej: BOB, USD, PEN)
   active   Boolean @default(true)   // false = no aparece en el combo box del frontend
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   clientContacts   ClientContact[]   // Clientes de este país
   providerServices ProviderService[] // Especialidades de providers de este país
 }
 
 /// Configuración global del sistema. Solo existe UN registro.
-/// El admin ajusta el tipo de cambio, comisión de la plataforma y límite de trabajos simultáneos.
+/// El admin ajusta la comisión de la plataforma y límite de trabajos simultáneos.
 model SystemConfig {
-  id                 String   @id @default(uuid())
-  exchangeRateUsdBob Float    @default(6.96)  // Tipo de cambio USD → BOB (ej: 6.96)
-  commissionRate     Float    @default(0.15)  // Porcentaje que cobra la plataforma por servicio (0.15 = 15%)
-  maxConcurrentJobs  Int      @default(2)     // Máximo de trabajos activos simultáneos por especialidad
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(uuid())
+  commissionRate    Float    @default(0.15)  // Porcentaje que cobra la plataforma por servicio (0.15 = 15%)
+  maxConcurrentJobs Int      @default(2)     // Máximo de trabajos activos simultáneos por especialidad
+  updatedAt         DateTime @updatedAt
+}
+
+/// Tipos de cambio para convertir paquetes de USD a la moneda local del cliente.
+/// El admin actualiza las tasas desde el panel. Siempre fromCurrency = "USD".
+model ExchangeRate {
+  id           String   @id @default(uuid())
+  fromCurrency String                   // Moneda origen (siempre "USD")
+  toCurrency   String                   // Moneda destino (ej: "BOB", "PEN", "ARS")
+  rate         Float                    // Tasa de conversión (ej: 6.96 para USD → BOB)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([fromCurrency, toCurrency])
 }
 
 /// Catálogo de tipos de servicio (Gasfitería, Electricidad, etc.).
@@ -147,7 +161,6 @@ model ClientProfile {
   lastName          String              // Apellido del cliente
   avatar            String?             // URL pública de la foto de perfil en Cloudinary
   avatarPublicId    String?             // public_id de Cloudinary para poder reemplazar o eliminar la imagen
-  billingRegion     String?             // Región de facturación (opcional)
   referralCode      String?   @unique   // Código único para referir a otros usuarios
   lastLoginAt       DateTime?           // Último inicio de sesión
   createdAt         DateTime  @default(now())
@@ -182,6 +195,7 @@ model ProviderService {
   id              String         @id @default(uuid())
   userId          String                           // Provider al que pertenece esta especialidad
   serviceTypeId   String                           // Tipo de servicio (Gasfitería, Electricidad, etc.)
+  phone           String?                          // Teléfono de contacto para esta especialidad
   phoneCountryIso String?                          // FK a Country — define dialCode y moneda del ProviderWallet
   status          ProviderStatus @default(PENDING)  // Estado de verificación del admin
   available       Boolean        @default(false)   // true = disponible para recibir nuevos trabajos
@@ -204,12 +218,11 @@ model ProviderService {
 }
 
 /// Perfil de presentación de una especialidad del provider.
-/// Contiene los datos editables que el cliente ve: foto, nombre personalizado, bio, teléfono, etc.
+/// Contiene los datos editables que el cliente ve: foto, nombre personalizado, bio, etc.
 /// Se crea al postularse y puede editarse libremente después.
 model ProviderServiceProfile {
   id                String          @id @default(uuid())
   providerServiceId String          @unique                  // Especialidad dueña de este perfil (1 a 1)
-  phone             String?                                  // Teléfono de contacto para esta especialidad
   bio               String?                                  // Descripción profesional para esta especialidad
   experience        Int?                                     // Años de experiencia en esta especialidad
   coverageRadius    Float?                                   // Radio máximo de cobertura en kilómetros
@@ -232,6 +245,7 @@ model ProviderDocument {
   publicId          String                    // public_id de Cloudinary para eliminar o reemplazar
   name              String?                   // Nombre descriptivo (ej: "Certificado de electricista")
   createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   providerService   ProviderService @relation(fields: [providerServiceId], references: [id]) // Especialidad a la que pertenece
 }
@@ -243,6 +257,7 @@ model ClientWallet {
   clientProfileId String        @unique          // Cliente dueño de esta billetera
   balance         Float         @default(0)      // Saldo disponible para pagar servicios
   createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   clientProfile   ClientProfile @relation(fields: [clientProfileId], references: [id]) // Cliente dueño de esta billetera
   recharges       Recharge[]                                                           // Historial de recargas
@@ -255,35 +270,54 @@ model ProviderWallet {
   providerServiceId String          @unique      // Especialidad dueña de esta billetera
   balance           Float           @default(0)  // Ganancias acumuladas pendientes de retiro
   createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  providerService   ProviderService @relation(fields: [providerServiceId], references: [id]) // Especialidad dueña de esta billetera
-  withdrawals       Withdrawal[]                                                             // Historial de retiros
+  providerService   ProviderService  @relation(fields: [providerServiceId], references: [id]) // Especialidad dueña de esta billetera
+  withdrawals       Withdrawal[]                                                              // Historial de retiros
+  purchases         ProviderPurchase[]                                                        // Historial de recargas del provider
 }
 
 /// Paquetes de recarga que el admin crea. El cliente elige uno para recargar su wallet.
-/// Funciona como una tarjeta prepago: eliges el monto y ese monto entra a tu saldo.
+/// El precio base está en USD y se convierte automáticamente a la moneda del cliente usando ExchangeRate.
 model Package {
   id        String   @id @default(uuid())
-  name      String             // Nombre descriptivo del paquete (ej: "Paquete 50", "Paquete 100")
-  amount    Float              // Monto que se acredita al ClientWallet al aprobarse
+  name      String             // Nombre descriptivo del paquete (ej: "Paquete Básico", "Paquete Pro")
+  amountUsd Float              // Precio base en USD (ej: 10.00). Se convierte a la moneda del cliente al mostrar.
   active    Boolean  @default(true)  // false = no aparece para los clientes
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  recharges Recharge[] // Recargas que usaron este paquete
+  recharges         Recharge[]         // Recargas de clientes que usaron este paquete
+  providerPurchases ProviderPurchase[]  // Compras de providers que usaron este paquete
 }
 
 /// Registro de cada recarga de saldo que hace un cliente.
-/// Flujo: cliente elige Package → Recharge (PENDING) → admin aprueba → ClientWallet.balance += package.amount
+/// Flujo: cliente elige Package → Recharge (PENDING) → admin aprueba → ClientWallet.balance += package.amountUsd convertido
 model Recharge {
   id             String         @id @default(uuid())
   clientWalletId String                          // Wallet del cliente que recarga
   packageId      String                          // Paquete elegido por el cliente
   status         RechargeStatus @default(PENDING) // Estado de la recarga
   createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   clientWallet ClientWallet  @relation(fields: [clientWalletId], references: [id]) // Wallet que recibe el saldo
   package      Package       @relation(fields: [packageId], references: [id])       // Paquete elegido por el cliente
+}
+
+/// Recarga de saldo del provider. El provider compra un paquete para acreditar
+/// saldo en su ProviderWallet de una especialidad específica.
+/// Flujo: provider elige Package → ProviderPurchase (PENDING) → admin aprueba → ProviderWallet.balance += monto convertido
+model ProviderPurchase {
+  id               String         @id @default(uuid())
+  providerWalletId String                          // Wallet del provider que recarga
+  packageId        String                          // Paquete elegido por el provider
+  status           RechargeStatus @default(PENDING) // Estado de la compra
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  providerWallet ProviderWallet @relation(fields: [providerWalletId], references: [id]) // Wallet que recibe el saldo
+  package        Package        @relation(fields: [packageId], references: [id])         // Paquete elegido por el provider
 }
 
 /// Solicitud de retiro de ganancias del provider.
@@ -297,6 +331,7 @@ model Withdrawal {
   accountNumber    String?                            // Número de cuenta bancaria destino
   status           WithdrawalStatus @default(PENDING) // Estado del retiro
   createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   providerWallet ProviderWallet  @relation(fields: [providerWalletId], references: [id]) // Wallet de donde se descuenta el saldo
 }
@@ -314,8 +349,8 @@ model Service {
   latitude          Float                           // Coordenadas para mostrar en el mapa
   longitude         Float                           // Coordenadas para mostrar en el mapa
   status            ServiceStatus   @default(SEARCHING) // Estado actual del servicio
-  price             Float                           // Precio acordado del servicio
-  commission        Float                           // Comisión cobrada por la plataforma (price * commissionRate)
+  price             Float?                          // Precio acordado del servicio (null hasta que se acuerde)
+  commission        Float?                          // Comisión cobrada por la plataforma (price * commissionRate)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -325,6 +360,7 @@ model Service {
   messages        Message[]                                                                                     // Chat del servicio
   calls           Call[]                                                                                        // Llamadas realizadas durante el servicio
   rating          Rating?                                                                                       // Calificación del cliente al finalizar
+
 }
 
 /// Mensajes del chat dentro de un servicio activo.
@@ -337,6 +373,7 @@ model Message {
   type      MessageType @default(TEXT)   // Tipo de contenido del mensaje
   read      Boolean     @default(false)  // true = el receptor ya lo leyó
   createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   service   Service     @relation(fields: [serviceId], references: [id])                    // Servicio al que pertenece el mensaje
   sender    User        @relation("SentMessages", fields: [senderId], references: [id])    // Usuario que envió el mensaje
@@ -354,6 +391,7 @@ model Call {
   endedAt    DateTime?            // Momento en que terminó la llamada
   duration   Int?                 // Duración en segundos (calculado al terminar)
   createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
   service    Service    @relation(fields: [serviceId], references: [id]) // Servicio en el que ocurrió la llamada
 }
@@ -367,7 +405,8 @@ model Rating {
   score     Int                        // Puntuación del 1 al 5
   comment   String?                    // Comentario opcional del cliente
   createdAt DateTime @default(now())
-
+  updatedAt DateTime @updatedAt
+  
   service   Service  @relation(fields: [serviceId], references: [id])                   // Servicio que se calificó
   client    User     @relation("ClientRatings", fields: [clientId], references: [id])  // Cliente que dio la calificación
 }
