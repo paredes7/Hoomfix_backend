@@ -1,14 +1,14 @@
 import { IsEmail, IsString, MinLength } from 'class-validator';
 
 export class RegisterTechnicianDto {
-  @IsString()
-  firstName!: string;
-
-  @IsString()
-  lastName!: string;
-
   @IsEmail({}, { message: 'Email inválido' })
   email!: string;
+
+  @IsString()
+  username!: string;
+
+  @IsString()
+  countryIso!: string;
 
   @IsString()
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
