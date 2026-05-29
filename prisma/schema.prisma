@@ -76,6 +76,8 @@ model Country {
   clientProfiles   ClientProfile[]   // Country (1) → (N) ClientProfile: un país puede tener muchos clientes registrados
   providerProfiles ProviderProfile[] // Country (1) → (N) ProviderProfile: un país puede tener muchos providers registrados
   providerServices ProviderService[] // Country (1) → (N) ProviderService: un país tiene muchas especialidades de providers registradas
+
+  @@map("Country") // Evita conflicto con la palabra reservada "Country" de Prisma  
 }
 
 /// Configuración global del sistema. Solo existe UN registro.
@@ -85,6 +87,8 @@ model SystemConfig {
   commissionRate    Float    @default(0.15) // Porcentaje que cobra la plataforma por servicio (0.15 = 15%)
   maxConcurrentJobs Int      @default(2)    // Máximo de trabajos activos simultáneos por especialidad
   updatedAt         DateTime @updatedAt
+
+  @@map("SystemConfig") // Evita conflicto con la palabra reservada "SystemConfig" de Prisma
 }
 
 /// Tipos de cambio para convertir paquetes de USD a la moneda local del cliente.
@@ -97,6 +101,7 @@ model ExchangeRate {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@map("ExchangeRate") // Evita conflicto con la palabra reservada "ExchangeRate" de Prisma
   @@unique([fromCurrency, toCurrency])
 }
 
@@ -113,6 +118,8 @@ model ServiceType {
 
   providerServices ProviderService[] // ServiceType (1) → (N) ProviderService: una categoría puede tener muchos providers registrados
   services         Service[]         // ServiceType (1) → (N) Service: una categoría puede tener muchos servicios solicitados
+
+  @@map("ServiceType") // Evita conflicto con la palabra reservada "ServiceType" de Prisma
 }
 
 /// Modelo base solo para autenticación. Cualquier usuario (cliente, provider o admin) tiene un User.
@@ -136,6 +143,15 @@ model User {
   sentMessages     Message[]         @relation("SentMessages")   // User (1) → (N) Message: mensajes enviados en los chats de sus servicios
   clientServices   Service[]         @relation("ClientServices") // User (1) → (N) Service: servicios solicitados si es CLIENT
   ratings          Rating[]          @relation("ClientRatings")  // User (1) → (N) Rating: calificaciones dadas a providers si es CLIENT
+  historyViews     HistoryView[]       // User (1) → (N) HistoryView: historial de historias vistas por el usuario
+  savedProviders   SavedProvider[]    @relation("SavedProviders") // User (1) → (N) SavedProvider: providers guardados como favoritos
+  postLikes        PostLike[]        // User (1) → (N) PostLike: likes dados a publicaciones de providers
+  postComments     PostComment[]     // User (1) → (N) PostComment: comentarios escritos en publicaciones de providers
+  reelLikes        ReelLike[]        // User (1) → (N) ReelLike: likes dados a reels de providers
+  reelComments     ReelComment[]     // User (1) → (N) ReelComment: comentarios escritos en reels de providers
+  savedBy          SavedPost[]      // User (1) → (N) SavedPost: publicaciones guardadas como favoritas por el usuario
+
+  @@map("User") // Evita conflicto con la palabra reservada "User" de Prisma
 }
 
 
@@ -158,6 +174,8 @@ model ClientProfile {
   contacts Contact[] // ClientProfile (1) → (N) Contact: un cliente puede tener múltiples números de contacto
   user           User            @relation(fields: [userId], references: [id])      // ClientProfile (N) → (1) User: este perfil pertenece a un solo usuario
   country        Country         @relation(fields: [countryIso], references: [iso]) // ClientProfile (N) → (1) Country: define la moneda del wallet del cliente
+
+  @@map("ClientProfile") // Evita conflicto con la palabra reservada "Profile" de Prisma
 }
 
 /// Datos personales del provider. Un solo perfil sin importar cuántas especialidades tenga.
@@ -177,6 +195,8 @@ model ProviderProfile {
 
   user    User    @relation(fields: [userId], references: [id])           // ProviderProfile (N) → (1) User: este perfil pertenece a un solo usuario
   country Country @relation(fields: [countryIso], references: [iso])      // ProviderProfile (N) → (1) Country: identifica el país del provider
+
+  @@map("ProviderProfile") // Evita conflicto con la palabra reservada "Profile" de Prisma
 }
 
 /// Números de contacto del cliente. Un cliente puede tener múltiples números.
@@ -189,6 +209,8 @@ model Contact {
   updatedAt       DateTime @updatedAt
 
   clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id]) // Contact (N) → (1) ClientProfile: este número pertenece a un solo cliente
+  
+  @@map("Contact") // Evita conflicto con la palabra reservada "Contact" de Prisma  
 }
 
 /// Números de contacto del provider por especialidad. Una especialidad puede tener múltiples números.
@@ -201,6 +223,8 @@ model ProviderContact {
   updatedAt         DateTime @updatedAt
 
   providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // ProviderContact (N) → (1) ProviderService: este número pertenece a una sola especialidad
+
+  @@map("ProviderContact") // Evita conflicto con la palabra reservada "Contact" de Prisma
 }
 
 /// Representa una especialidad del provider. Un provider puede tener múltiples registros,
@@ -228,9 +252,16 @@ model ProviderService {
   profile        ProviderServiceProfile?                                                         // ProviderService (1) → (1) ProviderServiceProfile: cada especialidad tiene su propio perfil de presentación
   documents        ProviderDocument[]                                                              // ProviderService (1) → (N) ProviderDocument: una especialidad puede tener muchos documentos de verificación
   services         Service[]             @relation("ProviderServices")                           // ProviderService (1) → (N) Service: una especialidad puede atender muchos servicios
-  providerContacts ProviderContact[]                                                             // ProviderService (1) → (N) ProviderContact: una especialidad puede tener múltiples números de contacto
+  providerContacts ProviderContact[]    
+  histories        History[]                                                              // ProviderService (1) → (N) History: una especialidad puede tener múltiples historias
+  savedBy          SavedProvider[]                                                        // ProviderService (1) → (N) SavedProvider: usuarios que guardaron esta especialidad como favorito
+  posts            Post[]                                                                // ProviderService (1) → (N) Post: una especialidad puede tener muchas publicaciones para mostrar su trabajo
+  reels            Reel[]                                                                // ProviderService (1) → (N) Reel: una especialidad puede tener muchos reels para mostrar su trabajo
+  anuncios         Anuncio[]                                                             // ProviderService (1) → (N) Anuncio: una especialidad puede tener muchos anuncios pagados
 
   @@unique([userId, serviceTypeId])
+
+  @@map("ProviderService") // Evita conflicto con la palabra reservada "Service" de Prisma
 }
 
 /// Perfil de presentación de una especialidad del provider.
@@ -250,6 +281,204 @@ model ProviderServiceProfile {
   updatedAt            DateTime @updatedAt
 
   providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // ProviderServiceProfile (1) → (1) ProviderService: este perfil de presentación pertenece a una sola especialidad
+
+  @@map("ProviderServiceProfile") // Evita conflicto con la palabra reservada "Profile" de Prisma
+}
+
+model Post {
+  id                String    @id @default(uuid())
+  providerServiceId String                    // Publicación ligada a la especialidad
+  content           String?                   // Texto de la publicación
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // Post (N) → (1) ProviderService: esta publicación pertenece a una sola especialidad
+  media           PostMedia[]     // Post (1) → (N) PostMedia: una publicación puede tener varias fotos o videos (carrusel)
+  likes           PostLike[]      // Post (1) → (N) PostLike: una publicación puede tener muchos likes de clientes
+  comments        PostComment[]   // Post (1) → (N) PostComment: una publicación puede tener muchos comentarios de clientes
+  savedPosts       SavedPost[]     // Post (1) → (N) SavedPost: una publicación puede ser guardada por muchos clientes como favorita
+
+  @@map("Post") // Evita conflicto con la palabra reservada "Post" de Prisma
+}
+
+model PostMedia {
+  id            String    @id @default(uuid())
+  postId        String
+  mediaUrl      String    // URL Cloudinary del media (foto o video) para mostrar en la publicación
+  mediaPublicId String    // Para eliminar de Cloudinary
+  mediaType     MediaType // IMAGE o VIDEO
+  order         Int       // Orden de las fotos (como carrusel)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  post Post @relation(fields: [postId], references: [id]) // PostMedia (N) → (1) Post: este media pertenece a una sola publicación
+
+  @@map("PostMedia") // Evita conflicto con la palabra reservada "Media" de Prisma
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  postId    String   // Publicación que recibió el like
+  userId    String   // Usuario que dio el like (debe ser cliente)
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id]) // PostLike (N) → (1) Post: este like pertenece a una sola publicación
+  user User @relation(fields: [userId], references: [id]) // PostLike (N) → (1) User: este like fue realizado por un solo usuario
+
+  @@map("PostLike") // Evita conflicto con la palabra reservada "Like" de Prisma
+  @@unique([postId, userId]) // Un like por usuario
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String   // Publicación a la que pertenece el comentario
+  userId    String   // Usuario que escribió el comentario (debe ser cliente)
+  content   String   // Texto del comentario
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post Post @relation(fields: [postId], references: [id]) // PostComment (N) → (1) Post: este comentario pertenece a una sola publicación
+  user User @relation(fields: [userId], references: [id]) // PostComment (N) → (1) User: este comentario fue escrito por un solo usuario
+
+  @@map("PostComment") // Evita conflicto con la palabra reservada "Comment" de Prisma
+}
+
+// Tabla intermedia para guardar las publicaciones favoritas de cada cliente. Un cliente puede guardar varias publicaciones como favoritas, y una publicación puede ser guardada por varios clientes. La combinación userId + postId es única para evitar duplicados.
+model SavedPost {
+  id        String   @id @default(uuid())
+  userId    String                      // Usuario que guardó la publicación
+  postId    String                      // Publicación guardada
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])  // SavedPost (N) → (1) User: este favorito fue guardado por un solo usuario
+  post Post @relation(fields: [postId], references: [id])  // SavedPost (N) → (1) Post: este favorito es de una sola publicación
+
+  @@unique([userId, postId]) // No puede guardar la misma publicación dos veces
+
+  @@map("SavedPost") // Evita conflicto con la palabra reservada "SavedPost" de Prisma
+}
+
+// Tabla intermedia para guardar los providers favoritos de cada cliente. Un cliente puede guardar varias especialidades como favoritas, y una especialidad puede ser guardada por varios clientes. La combinación clientId + providerServiceId es única para evitar duplicados.
+model SavedProvider {
+  id        String   @id @default(uuid())
+  clientId  String             // Cliente que guardó este provider
+  providerServiceId String      // Especialidad del provider que se guardó
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client          User             @relation("SavedProviders", fields: [clientId], references: [id])           // SavedProvider (N) → (1) User: este favorito fue guardado por un solo cliente
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // SavedProvider (N) → (1) ProviderService: este favorito es de una sola especialidad
+
+  @@map("SavedProvider") // Evita conflicto con la palabra reservada "SavedProvider" de Prisma
+  @@unique([clientId, providerServiceId]) // Evita que el mismo cliente guarde la misma especialidad varias veces
+}
+
+/// Historia que el provider sube para mostrar su trabajo a los clientes.
+/// Expira automáticamente a las 24 horas. El cron job elimina las expiradas.
+model History {
+  id                String    @id @default(uuid())
+  providerServiceId String                       // Especialidad a la que pertenece esta historia
+  mediaUrl          String                       // URL pública del media en Cloudinary
+  mediaPublicId     String                       // public_id de Cloudinary para eliminar al expirar
+  mediaType         MediaType @default(IMAGE)    // Tipo de media (IMAGE o VIDEO)
+  caption           String?                      // Texto opcional sobre la historia
+  expiresAt         DateTime                     // createdAt + 24h — el cron job elimina las expiradas
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  historyViews HistoryView[] // History (1) → (N) HistoryView: una historia puede tener muchas vistas de clientes
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // History (N) → (1) ProviderService: esta historia pertenece a una sola especialidad
+
+  @@map("History") // Evita conflicto con la palabra reservada "History" de Prisma
+}
+
+// Registro de cada vez que un cliente ve una historia de un provider. Sirve para mostrar el conteo de vistas y evitar contar varias vistas del mismo usuario.
+model HistoryView {
+  id        String   @id @default(uuid())
+  historyId String             // Historia que se vio
+  userId    String             // Usuario que vio la historia
+  viewedAt  DateTime @default(now()) // Momento en que se vio la historia
+
+  history History @relation(fields: [historyId], references: [id]) // HistoryView (N) → (1) History: esta vista pertenece a una sola historia
+  user    User    @relation(fields: [userId], references: [id])    // HistoryView (N) → (1) User: esta vista fue hecha por un solo usuario
+
+  @@unique([historyId, userId]) // Evita que el mismo usuario cuente varias veces como vista de la misma historia
+  @@map("HistoryView") // Evita conflicto con la palabra reservada "View" de Prisma
+}
+
+/// Reel corto del provider para mostrar su trabajo (estilo TikTok/Instagram Reels).
+/// Independiente de Post — es contenido vertical corto con su propia sección en la app.
+model Reel {
+  id                String   @id @default(uuid())
+  providerServiceId String                      // Especialidad a la que pertenece este reel
+  videoUrl          String                      // URL Cloudinary del video
+  videoPublicId     String                      // public_id para eliminar de Cloudinary
+  thumbnailUrl      String                      // URL Cloudinary del thumbnail (primer frame)
+  thumbnailPublicId String                      // public_id del thumbnail para eliminar
+  caption           String?                     // Texto opcional sobre el reel
+  duration          Int                         // Duración en segundos (máx 60)
+  views             Int      @default(0)        // Contador de reproducciones
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // Reel (N) → (1) ProviderService: este reel pertenece a una sola especialidad
+  likes           ReelLike[] // Reel (1) → (N) ReelLike: un reel puede tener muchos likes de clientes
+  comments        ReelComment[]  // Reel (1) → (N) ReelComment: un reel puede tener muchos comentarios de clientes
+
+  @@map("Reel") // Evita conflicto con la palabra reservada "Reel" de Prisma  
+}
+
+model ReelLike {
+  id        String   @id @default(uuid())
+  reelId    String  // Reel que recibió el like
+  userId    String  // Usuario que dio el like (debe ser cliente)
+  createdAt DateTime @default(now())
+
+  reel Reel @relation(fields: [reelId], references: [id]) // ReelLike (N) → (1) Reel: este like pertenece a un solo reel
+  user User @relation(fields: [userId], references: [id])    // ReelLike (N) → (1) User: este like fue dado por un solo usuario
+
+  @@unique([reelId, userId]) // Evita que el mismo usuario le dé like al mismo reel varias veces
+  @@map("ReelLike") // Evita conflicto con la palabra reservada "Like" de Prisma
+}
+
+model ReelComment {
+  id        String   @id @default(uuid())
+  reelId    String   // Reel al que pertenece el comentario
+  userId    String   // Usuario que escribió el comentario (debe ser cliente)
+  content   String   // Texto del comentario
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reel Reel @relation(fields: [reelId], references: [id]) // ReelComment (N) → (1) Reel: este comentario pertenece a un solo reel
+  user User @relation(fields: [userId], references: [id]) // ReelComment (N) → (1) User: este comentario fue escrito por un solo usuario
+
+  @@map("ReelComment") // Evita conflicto con la palabra reservada "Comment" de Prisma
+}
+
+/// Anuncio pagado por el provider para destacar su especialidad en los resultados de búsqueda.
+/// El saldo se descuenta del ProviderWallet al crear el anuncio (prepago).
+model Anuncio {
+  id                String   @id @default(uuid())
+  providerWalletId  String                       // Wallet de donde se descontó el saldo
+  providerServiceId String                       // Especialidad que se está promocionando
+  title             String                       // Título del anuncio (ej: "Electricista profesional en La Paz")
+  description       String?                      // Texto descriptivo del anuncio
+  mediaUrl         String?                      // URL de imagen opcional para mostrar en el anuncio
+  mediaPublicId    String?                      // public_id de Cloudinary para eliminar o reemplazar
+  mediaType       MediaType?                   // Tipo de media (IMAGE o VIDEO) para el anuncio
+  budget            Float                        // Saldo descontado del ProviderWallet al crear
+  startDate         DateTime                     // Fecha de inicio del anuncio
+  endDate           DateTime                     // Fecha de fin — el cron job lo desactiva automáticamente
+  active            Boolean  @default(true)      // false = expirado o desactivado manualmente
+  impressions       Int      @default(0)         // Veces que se mostró en búsquedas
+  clicks            Int      @default(0)         // Veces que tocaron el anuncio
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  providerWallet  ProviderWallet  @relation(fields: [providerWalletId],  references: [id])  // Anuncio (N) → (1) ProviderWallet: el saldo se descontó de esta billetera
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id])  // Anuncio (N) → (1) ProviderService: esta especialidad es la que se promociona
+
+  @@map("Anuncio") // Evita conflicto con la palabra reservada "Ad" de Prisma
 }
 
 /// Documento o certificado subido por el provider para verificar una especialidad.
@@ -264,6 +493,7 @@ model ProviderDocument {
   updatedAt         DateTime @updatedAt
 
   providerService ProviderService @relation(fields: [providerServiceId], references: [id]) // ProviderDocument (N) → (1) ProviderService: este documento pertenece a una sola especialidad
+  @@map("ProviderDocument") // Evita conflicto con la palabra reservada "Document" de Prisma
 }
 
 /// Billetera del cliente. Solo para pagar servicios. Recibe recargas aprobadas por el admin.
@@ -278,6 +508,8 @@ model ClientWallet {
 
   clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id]) // ClientWallet (1) → (1) ClientProfile: esta billetera pertenece a un solo cliente
   recharges     Recharge[]                                                            // ClientWallet (1) → (N) Recharge: una billetera puede tener muchas recargas en su historial
+  
+  @@map("ClientWallet") // Evita conflicto con la palabra reservada "Wallet" de Prisma
 }
 
 /// Billetera del provider por especialidad. Acumula ganancias de servicios completados.
@@ -293,6 +525,9 @@ model ProviderWallet {
   providerService ProviderService   @relation(fields: [providerServiceId], references: [id]) // ProviderWallet (1) → (1) ProviderService: esta billetera pertenece a una sola especialidad
   withdrawals     Withdrawal[]                                                                // ProviderWallet (1) → (N) Withdrawal: una billetera puede tener muchos retiros en su historial
   purchases       ProviderPurchase[]                                                          // ProviderWallet (1) → (N) ProviderPurchase: una billetera puede tener muchas recargas compradas
+  anuncios        Anuncio[]                                                                       // ProviderWallet (1) → (N) Anuncio: una billetera puede tener muchos anuncios pagados
+
+  @@map("ProviderWallet") // Evita conflicto con la palabra reservada "Wallet" de Prisma
 }
 
 /// Paquetes de recarga que el admin crea. El cliente elige uno para recargar su wallet.
@@ -307,6 +542,8 @@ model Package {
 
   recharges         Recharge[]          // Package (1) → (N) Recharge: un paquete puede ser usado en muchas recargas de clientes
   providerPurchases ProviderPurchase[]   // Package (1) → (N) ProviderPurchase: un paquete puede ser comprado por muchos providers
+
+  @@map("Package") // Evita conflicto con la palabra reservada "Package" de Prisma
 }
 
 /// Registro de cada recarga de saldo que hace un cliente.
@@ -321,6 +558,8 @@ model Recharge {
 
   clientWallet ClientWallet @relation(fields: [clientWalletId], references: [id]) // Recharge (N) → (1) ClientWallet: esta recarga acredita saldo a una sola billetera de cliente
   package      Package      @relation(fields: [packageId], references: [id])      // Recharge (N) → (1) Package: esta recarga usa un solo paquete como referencia de monto
+
+  @@map("Recharge") // Evita conflicto con la palabra reservada "Recharge" de Prisma
 }
 
 /// Recarga de saldo del provider. El provider compra un paquete para acreditar
@@ -336,6 +575,8 @@ model ProviderPurchase {
 
   providerWallet ProviderWallet @relation(fields: [providerWalletId], references: [id]) // ProviderPurchase (N) → (1) ProviderWallet: esta compra acredita saldo a una sola billetera de provider
   package        Package        @relation(fields: [packageId], references: [id])         // ProviderPurchase (N) → (1) Package: esta compra usa un solo paquete como referencia de monto
+
+  @@map("ProviderPurchase") // Evita conflicto con la palabra reservada "Purchase" de Prisma
 }
 
 /// Solicitud de retiro de ganancias del provider.
@@ -352,6 +593,8 @@ model Withdrawal {
   updatedAt        DateTime         @updatedAt
 
   providerWallet ProviderWallet @relation(fields: [providerWalletId], references: [id]) // Withdrawal (N) → (1) ProviderWallet: este retiro descuenta saldo de una sola billetera de provider
+
+  @@map("Withdrawal") // Evita conflicto con la palabra reservada "Withdrawal" de Prisma
 }
 
 /// Núcleo del negocio. Representa un servicio solicitado por un cliente.
@@ -378,6 +621,8 @@ model Service {
   messages        Message[]                                                                                      // Service (1) → (N) Message: un servicio puede tener muchos mensajes en su chat
   calls           Call[]                                                                                         // Service (1) → (N) Call: un servicio puede tener muchas llamadas
   rating          Rating?                                                                                        // Service (1) → (1) Rating: un servicio solo puede tener una calificación al finalizar
+
+  @@map("Service") // Evita conflicto con la palabra reservada "Service" de Prisma
 }
 
 /// Mensajes del chat dentro de un servicio activo.
@@ -394,6 +639,8 @@ model Message {
 
   service Service @relation(fields: [serviceId], references: [id])                 // Message (N) → (1) Service: este mensaje pertenece a un solo servicio
   sender  User    @relation("SentMessages", fields: [senderId], references: [id])  // Message (N) → (1) User: este mensaje fue enviado por un solo usuario
+
+  @@map("Message") // Evita conflicto con la palabra reservada "Message" de Prisma
 }
 
 /// Registro de llamadas de voz o video entre cliente y provider durante un servicio.
@@ -411,6 +658,8 @@ model Call {
   updatedAt  DateTime   @updatedAt
 
   service Service @relation(fields: [serviceId], references: [id]) // Call (N) → (1) Service: esta llamada ocurrió dentro de un solo servicio
+  
+  @@map("Call") // Evita conflicto con la palabra reservada "Call" de Prisma
 }
 
 /// Calificación que el cliente da al provider después de completar un servicio.
@@ -426,4 +675,11 @@ model Rating {
 
   service Service @relation(fields: [serviceId], references: [id])                  // Rating (1) → (1) Service: esta calificación pertenece a un solo servicio
   client  User    @relation("ClientRatings", fields: [clientId], references: [id])  // Rating (N) → (1) User: esta calificación fue dada por un solo cliente
+
+  @@map("Rating") // Evita conflicto con la palabra reservada "Rating" de Prisma
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
 }
