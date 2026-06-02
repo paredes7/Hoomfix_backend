@@ -44,26 +44,15 @@ erDiagram
   User {
     string    id                  PK
     string    email
+    string    phone
     string    username
     string    password
-    Role      role
     boolean   isActive
     string    fcmToken
     datetime  createdAt
   }
 
-  ClientProfile {
-    string    id             PK
-    string    userId         FK
-    string    countryIso     FK
-    string    firstName
-    string    lastName
-    string    avatar
-    string    referralCode
-    datetime  lastLoginAt
-  }
-
-  ProviderProfile {
+  Profile {
     string    id             PK
     string    userId         FK
     string    countryIso     FK
@@ -75,8 +64,8 @@ erDiagram
   }
 
   Contact {
-    string  id              PK
-    string  clientProfileId FK
+    string  id        PK
+    string  profileId FK
     string  phone
   }
 
@@ -122,9 +111,9 @@ erDiagram
 
   %% ─── WALLETS ─────────────────────────────────────────────────
 
-  ClientWallet {
-    string  id              PK
-    string  clientProfileId FK
+  Wallet {
+    string  id        PK
+    string  profileId FK
     string  currency
     float   balance
   }
@@ -139,9 +128,9 @@ erDiagram
   %% ─── TRANSACCIONES ───────────────────────────────────────────
 
   Recharge {
-    string         id             PK
-    string         clientWalletId FK
-    string         packageId      FK
+    string         id        PK
+    string         walletId  FK
+    string         packageId FK
     RechargeStatus status
   }
 
@@ -244,7 +233,7 @@ erDiagram
 
   SavedProvider {
     string    id                PK
-    string    clientId          FK
+    string    userId            FK
     string    providerServiceId FK
     datetime  createdAt
   }
@@ -313,61 +302,59 @@ erDiagram
   %% ─── RELACIONES ──────────────────────────────────────────────
 
   %% País
-  Country         ||--o{ ClientProfile          : "registra clientes"
-  Country         ||--o{ ProviderProfile        : "registra providers"
-  Country         ||--o{ ProviderService        : "define moneda wallet"
+  Country         ||--o{ Profile               : "registra usuarios"
+  Country         ||--o{ ProviderService       : "define moneda wallet"
 
   %% Usuario
-  User            ||--o| ClientProfile          : "tiene perfil cliente"
-  User            ||--o| ProviderProfile        : "tiene perfil provider"
-  User            ||--o{ ProviderService        : "tiene especialidades"
-  User            ||--o{ Service                : "solicita servicios"
-  User            ||--o{ Message                : "envía mensajes"
-  User            ||--o{ Rating                 : "da calificaciones"
-  User            ||--o{ HistoryView            : "ve historias"
-  User            ||--o{ SavedProvider          : "guarda providers"
-  User            ||--o{ SavedPost              : "guarda publicaciones"
-  User            ||--o{ PostLike               : "da likes a posts"
-  User            ||--o{ PostComment            : "comenta en posts"
-  User            ||--o{ ReelLike               : "da likes a reels"
-  User            ||--o{ ReelComment            : "comenta en reels"
+  User            ||--o| Profile               : "tiene perfil"
+  User            ||--o{ ProviderService       : "tiene especialidades"
+  User            ||--o{ Service               : "solicita servicios"
+  User            ||--o{ Message               : "envía mensajes"
+  User            ||--o{ Rating                : "da calificaciones"
+  User            ||--o{ HistoryView           : "ve historias"
+  User            ||--o{ SavedProvider         : "guarda providers"
+  User            ||--o{ SavedPost             : "guarda publicaciones"
+  User            ||--o{ PostLike              : "da likes a posts"
+  User            ||--o{ PostComment           : "comenta en posts"
+  User            ||--o{ ReelLike              : "da likes a reels"
+  User            ||--o{ ReelComment           : "comenta en reels"
 
-  %% Perfil cliente
-  ClientProfile   ||--o| ClientWallet           : "tiene wallet"
-  ClientProfile   ||--o{ Contact                : "tiene teléfonos"
+  %% Perfil
+  Profile         ||--o| Wallet                : "tiene wallet"
+  Profile         ||--o{ Contact               : "tiene teléfonos"
 
   %% Especialidad provider
-  ServiceType     ||--o{ ProviderService        : "categoriza"
-  ServiceType     ||--o{ Service                : "categoriza"
-  ProviderService ||--o| ProviderWallet         : "tiene wallet"
-  ProviderService ||--o| ProviderServiceProfile : "tiene perfil público"
-  ProviderService ||--o{ ProviderDocument       : "tiene documentos"
-  ProviderService ||--o{ ProviderContact        : "tiene teléfonos"
-  ProviderService ||--o{ Service                : "atiende servicios"
-  ProviderService ||--o{ History                : "publica historias"
-  ProviderService ||--o{ Post                   : "publica posts"
-  ProviderService ||--o{ Reel                   : "publica reels"
-  ProviderService ||--o{ Anuncio                : "tiene anuncios"
-  ProviderService ||--o{ SavedProvider          : "guardado por usuarios"
+  ServiceType     ||--o{ ProviderService       : "categoriza"
+  ServiceType     ||--o{ Service               : "categoriza"
+  ProviderService ||--o| ProviderWallet        : "tiene wallet"
+  ProviderService ||--o| ProviderServiceProfile: "tiene perfil público"
+  ProviderService ||--o{ ProviderDocument      : "tiene documentos"
+  ProviderService ||--o{ ProviderContact       : "tiene teléfonos"
+  ProviderService ||--o{ Service               : "atiende servicios"
+  ProviderService ||--o{ History               : "publica historias"
+  ProviderService ||--o{ Post                  : "publica posts"
+  ProviderService ||--o{ Reel                  : "publica reels"
+  ProviderService ||--o{ Anuncio               : "tiene anuncios"
+  ProviderService ||--o{ SavedProvider         : "guardado por usuarios"
 
   %% Contenido
-  History         ||--o{ HistoryView            : "tiene vistas"
-  Post            ||--o{ PostMedia              : "tiene media"
-  Post            ||--o{ PostLike               : "tiene likes"
-  Post            ||--o{ PostComment            : "tiene comentarios"
-  Post            ||--o{ SavedPost              : "guardado por usuarios"
-  Reel            ||--o{ ReelLike               : "tiene likes"
-  Reel            ||--o{ ReelComment            : "tiene comentarios"
+  History         ||--o{ HistoryView           : "tiene vistas"
+  Post            ||--o{ PostMedia             : "tiene media"
+  Post            ||--o{ PostLike              : "tiene likes"
+  Post            ||--o{ PostComment           : "tiene comentarios"
+  Post            ||--o{ SavedPost             : "guardada por usuarios"
+  Reel            ||--o{ ReelLike              : "tiene likes"
+  Reel            ||--o{ ReelComment           : "tiene comentarios"
 
   %% Transacciones
-  ClientWallet    ||--o{ Recharge               : "historial recargas"
-  ProviderWallet  ||--o{ ProviderPurchase       : "historial compras"
-  ProviderWallet  ||--o{ Withdrawal             : "historial retiros"
-  ProviderWallet  ||--o{ Anuncio                : "financia anuncios"
-  Package         ||--o{ Recharge               : "usado en recargas"
-  Package         ||--o{ ProviderPurchase       : "usado en compras"
+  Wallet          ||--o{ Recharge              : "historial recargas"
+  ProviderWallet  ||--o{ ProviderPurchase      : "historial compras"
+  ProviderWallet  ||--o{ Withdrawal            : "historial retiros"
+  ProviderWallet  ||--o{ Anuncio               : "financia anuncios"
+  Package         ||--o{ Recharge              : "usado en recargas"
+  Package         ||--o{ ProviderPurchase      : "usado en compras"
 
   %% Servicio
-  Service         ||--o{ Message                : "tiene chat"
-  Service         ||--o{ Call                   : "tiene llamadas"
-  Service         ||--o| Rating                 : "tiene calificación"
+  Service         ||--o{ Message               : "tiene chat"
+  Service         ||--o{ Call                  : "tiene llamadas"
+  Service         ||--o| Rating                : "tiene calificación"

@@ -1,4 +1,4 @@
-import { IsString, IsIn } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class GoogleCompleteDto {
   @IsString()
@@ -6,7 +6,4 @@ export class GoogleCompleteDto {
 
   @IsString()
   countryIso!: string;
-
-  @IsIn(['CLIENT', 'PROVIDER'])
-  role!: 'CLIENT' | 'PROVIDER';
 }

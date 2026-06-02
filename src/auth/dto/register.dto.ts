@@ -1,8 +1,13 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 export class RegisterDto {
+  @ValidateIf((o) => !o.phone)
   @IsEmail({}, { message: 'Email inválido' })
-  email!: string;
+  email?: string;
+
+  @ValidateIf((o) => !o.email)
+  @IsString({ message: 'Teléfono inválido' })
+  phone?: string;
 
   @IsString()
   username!: string;

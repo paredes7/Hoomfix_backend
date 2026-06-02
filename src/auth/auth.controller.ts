@@ -4,7 +4,6 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -12,7 +11,6 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { RegisterTechnicianDto } from './dto/register-technician.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GoogleCompleteDto } from './dto/google-complete.dto';
@@ -26,13 +24,8 @@ export class AuthController {
   ) {}
 
   @Post('register')
-  async registerClient(@Body() dto: RegisterDto) {
-    return this.authService.registerClient(dto);
-  }
-
-  @Post('register/technician')
-  async registerTechnician(@Body() dto: RegisterTechnicianDto) {
-    return this.authService.registerTechnician(dto);
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
   }
 
   @Post('login')
@@ -52,9 +45,19 @@ export class AuthController {
   async completeGoogleRegistration(
     @Body() body: { tempToken: string } & GoogleCompleteDto,
   ) {
-    let payload: any;
+    let payload: {
+      googleEmail: string;
+      firstName: string;
+      lastName: string;
+      type: string;
+    };
     try {
-      payload = this.jwtService.verify(body.tempToken);
+      payload = this.jwtService.verify<{
+        googleEmail: string;
+        firstName: string;
+        lastName: string;
+        type: string;
+      }>(body.tempToken);
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
     }
@@ -62,7 +65,6 @@ export class AuthController {
       payload,
       body.username,
       body.countryIso,
-      body.role,
     );
   }
 

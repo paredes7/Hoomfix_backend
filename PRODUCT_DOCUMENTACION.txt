@@ -1,8 +1,8 @@
 ================================================================
           DOCUMENTACIÓN DE PRODUCTO - HOOMFIX
 ================================================================
-Fecha: 25/05/2026
-Versión: 1.1
+Fecha: 29/05/2026
+Versión: 2.0
 ================================================================
 
 
@@ -11,17 +11,42 @@ Versión: 1.1
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Hoomfix es un marketplace on-demand de servicios del hogar.
-Conecta a clientes que necesitan un técnico (gasfitero, electricista,
+Conecta a personas que necesitan un técnico (gasfitero, electricista,
 etc.) con providers verificados disponibles en su zona.
 
 Tipo de software : Marketplace de servicios (platform business)
 Modelo de negocio: Comisión por transacción (take-rate model)
-Plataforma        : Aplicación móvil + Backend API REST
-Inspiración       : Uber, TaskRabbit, Rappi
+Plataforma       : Aplicación móvil + Backend API REST
+Inspiración      : Uber, TaskRabbit, Facebook
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-2. ¿CÓMO GANA DINERO HOOMFIX?
+2. MODELO DE USUARIOS — FILOSOFÍA FACEBOOK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Hoomfix no tiene roles fijos al registrarse. Cualquier usuario
+puede solicitar servicios Y ofrecer servicios, igual que en Facebook
+cualquier persona puede usar la red social Y crear una página de negocio.
+
+  Registro → cuenta única (User + Profile + Wallet)
+           → ve el feed de providers
+           → puede solicitar servicios
+
+  Quiero ofrecer servicios → postula a una especialidad
+                           → admin aprueba
+                           → ya puede recibir trabajos
+
+Un mismo usuario puede:
+  ✓ Solicitar un gasfitero para su casa
+  ✓ Ofrecer servicios de electricidad con su propia especialidad
+  ✓ Tener múltiples especialidades (Gasfitería + Electricidad)
+  ✓ Publicar historias, posts y reels de su trabajo
+  ✓ Guardar providers favoritos
+  ✓ Dar likes y comentar publicaciones
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ¿CÓMO GANA DINERO HOOMFIX?
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Por cada servicio completado, Hoomfix cobra una comisión:
@@ -39,68 +64,77 @@ SISTEMA DE MONEDAS:
 
   Ejemplo:
     Paquete Pro = 10 USD
-    Cliente Bolivia → 10 × 6.96 = 69.60 BOB
-    Cliente Perú    → 10 × 3.70 = 37.00 PEN
+    Usuario Bolivia → 10 × 6.96 = 69.60 BOB
+    Usuario Perú    → 10 × 3.70 = 37.00 PEN
 
   El admin gestiona los tipos de cambio desde el panel (ExchangeRate).
   Un solo catálogo de paquetes sirve para todos los países.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3. ACTORES DEL SISTEMA
+4. ACTORES DEL SISTEMA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-┌─────────────┬──────────────────────────────────────────────┐
-│ Actor       │ Descripción                                  │
-├─────────────┼──────────────────────────────────────────────┤
-│ CLIENT      │ Persona que solicita servicios del hogar.    │
-│             │ Tiene wallet para pagar servicios.           │
-│             │ Puede recargar saldo comprando paquetes.     │
-├─────────────┼──────────────────────────────────────────────┤
-│ PROVIDER    │ Técnico que ofrece servicios. Puede tener    │
-│             │ múltiples especialidades verificadas.        │
-│             │ Cada especialidad tiene su propia wallet.    │
-│             │ Puede comprar paquetes para recargar         │
-│             │ el saldo de una especialidad específica.     │
-├─────────────┼──────────────────────────────────────────────┤
-│ ADMIN       │ Administrador de la plataforma. Aprueba      │
-│             │ providers, recargas, retiros y gestiona      │
-│             │ el catálogo de servicios, paquetes y         │
-│             │ tipos de cambio.                             │
-└─────────────┴──────────────────────────────────────────────┘
+┌──────────────┬─────────────────────────────────────────────────┐
+│ Actor        │ Descripción                                     │
+├──────────────┼─────────────────────────────────────────────────┤
+│ USUARIO      │ Cualquier persona registrada en la app.         │
+│              │ Puede solicitar servicios usando su Wallet.     │
+│              │ Puede también ofrecer servicios postulándose    │
+│              │ a una especialidad — sin restricción de rol.    │
+│              │ Puede recargar saldo comprando paquetes.        │
+├──────────────┼─────────────────────────────────────────────────┤
+│ PROVIDER     │ Un usuario que se postuló y fue aprobado en     │
+│ (especialidad│ una especialidad. Cada especialidad tiene su    │
+│  aprobada)   │ propio ProviderWallet de ganancias, perfil de   │
+│              │ presentación, documentos y contenido (posts,    │
+│              │ reels, historias, anuncios).                    │
+├──────────────┼─────────────────────────────────────────────────┤
+│ ADMIN        │ Administrador de la plataforma. Aprueba         │
+│              │ especialidades, recargas, retiros y gestiona    │
+│              │ el catálogo de servicios, paquetes y            │
+│              │ tipos de cambio.                                │
+└──────────────┴─────────────────────────────────────────────────┘
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-4. FLUJO COMPLETO DEL SISTEMA
+5. FLUJO COMPLETO DEL SISTEMA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ────────────────────────────────────────
-4.1 REGISTRO Y AUTENTICACIÓN
+5.1 REGISTRO Y AUTENTICACIÓN
 ────────────────────────────────────────
 
-CLIENTE se registra con:
-  → Nombre, apellido, email, contraseña
-  → Teléfono + país elegido del combo box (phoneCountryIso)
-     Ej: phone: 70000001, phoneCountryIso: BO
-     El dialCode (+591) y la moneda (BOB) se obtienen de la tabla Country
-  → Sistema genera username automáticamente desde el email
-     Ej: carlos.mamani@gmail.com → carlosmamani
-     Solo letras y números. Si ya existe agrega número al final.
-  → Se crea ClientContact con phone + FK a Country
-  → Se crea ClientWallet automáticamente (saldo: 0)
-     La moneda se lee desde Country.currency al momento de mostrar el saldo
+REGISTRO (2 pasos, cualquier persona):
 
-PROVIDER se registra con:
-  → Nombre, apellido, email, contraseña
-  → Sistema genera username automáticamente
-  → Se crea ProviderProfile con los datos del provider
-  → Sin wallet ni teléfono al registrarse
-     (esos datos se agregan por especialidad)
+  Paso 1 — Crear cuenta:
+    → El usuario elige registrarse con email O con teléfono
+    → Elige su username (único, solo letras y números)
+    → Elige su país del combo box (define la moneda del Wallet)
+    → Se crea User + Profile + Wallet (saldo: 0, moneda por país)
 
-LOGIN soporta 3 opciones:
+    Con email:    { email, username, countryIso, password }
+    Con teléfono: { phone, username, countryIso, password }
+      El frontend arma el phone: Country.dialCode + número
+      Ej: "+591" + "70012345" = "+59170012345"
+
+  Paso 2 — Completar perfil:
+    → Completa firstName, lastName
+    → Agrega teléfonos de contacto opcionales (máx 3)
+      Nota: estos son teléfonos visibles en el perfil,
+            distintos al User.phone que es para login
+
+LOGIN — 4 formas:
   1. email + contraseña
   2. username + contraseña
-  3. Google OAuth
+  3. teléfono + contraseña   ← User.phone
+  4. Google OAuth
+
+REGISTRO CON GOOGLE (un solo flujo):
+  → El app abre el selector de cuentas de Google
+  → Si el email ya existe → login directo
+  → Si es nuevo → elige username + país → cuenta creada
+  → firstName y lastName vienen de Google (no requiere Paso 2)
 
 RECUPERAR CONTRASEÑA:
   → Código de 6 dígitos enviado al email
@@ -108,97 +142,120 @@ RECUPERAR CONTRASEÑA:
 
 
 ────────────────────────────────────────
-4.2 PROVIDER — POSTULACIÓN A ESPECIALIDAD
+5.2 POSTULACIÓN A ESPECIALIDAD
 ────────────────────────────────────────
 
-Un provider puede postularse a múltiples especialidades.
-Cada especialidad es completamente independiente — tiene su propio
-perfil de presentación, wallet de ganancias, estado de verificación
-y disponibilidad.
+Cualquier usuario puede postularse a ofrecer un servicio en cualquier
+momento, sin necesidad de un rol especial.
 Modelo similar a Uber — un solo login, múltiples modalidades de trabajo.
 
-Cada especialidad se compone de dos tablas:
-  → ProviderService        — datos operativos (teléfono, estado, ubicación, rating)
-  → ProviderServiceProfile — datos de presentación (bio, foto, nombre personalizado, etc.)
+Cada especialidad es completamente independiente — tiene su propio
+perfil de presentación, wallet de ganancias, estado de verificación,
+disponibilidad y contenido (posts, reels, historias, anuncios).
 
 Pasos:
-  1. Provider elige un ServiceType disponible
+  1. Usuario elige un ServiceType disponible
      (Gasfitería, Electricidad, Carpintería, etc.)
 
-  2. Completa los datos operativos de la especialidad (ProviderService):
-       - Teléfono de contacto para esta especialidad
-       - País del teléfono elegido del combo box (phoneCountryIso)
-         El dialCode y moneda se obtienen de la tabla Country
-         (puede ser diferente al de otras especialidades)
-         phoneCountryIso define la moneda del ProviderWallet — no cambia después
+  2. Elige el país donde va a trabajar esa especialidad
+     El país define la moneda del ProviderWallet (fija para siempre)
 
-  3. Completa el perfil de presentación (ProviderServiceProfile):
-       - Bio profesional específica para esta especialidad
-       - Años de experiencia en esta especialidad
+  3. Completa el perfil de presentación (opcional al postularse):
+       - Bio profesional
+       - Años de experiencia
        - Radio máximo de cobertura en kilómetros
-       - Nombre comercial o de negocio (opcional)
+       - Nombre comercial (opcional)
        - Nombre personalizado del servicio (opcional)
          Ej: "Plomería Express", "Electricista 24h"
        - Foto del servicio (opcional, subida vía Cloudinary)
 
-  4. Sube documentos de verificación (uno por uno vía Cloudinary):
-       - Certificados, títulos, carnets profesionales, etc.
-       - Cada documento se guarda en ProviderDocument con su URL
-         y publicId de Cloudinary para eliminarlo o reemplazarlo
-         individualmente
+  4. Agrega teléfonos de contacto para esta especialidad (opcional)
 
-  5. La especialidad queda en estado PENDING
+  5. Sube documentos de verificación (opcional al postularse):
+       - Certificados, títulos, carnets profesionales
+       - Cada documento se guarda en ProviderDocument
+
+  6. La especialidad queda en estado PENDING
      → Admin recibe notificación para revisar
 
-  6. Admin revisa los documentos subidos y decide:
-       - APPROVED → provider puede activar disponibilidad
-       - REJECTED → provider debe corregir y volver a postularse
+  7. Admin revisa los documentos y decide:
+       - APPROVED → usuario puede activar disponibilidad
+       - REJECTED → usuario debe corregir y volver a postularse
 
-  7. Con estado APPROVED el provider puede:
-       - Activar/desactivar su disponibilidad (available: true/false)
-       - Actualizar su ubicación en tiempo real (lat/lng)
-         Ambos campos viven en ProviderService — son datos operativos
-       - Recibir solicitudes de servicio de clientes cercanos
+  8. Con estado APPROVED el usuario puede:
+       - Activar/desactivar disponibilidad (available: true/false)
+       - Actualizar ubicación en tiempo real (lat/lng)
+       - Recibir solicitudes de clientes cercanos
        - Acumular ganancias en su ProviderWallet
-       - Editar su ProviderServiceProfile libremente
-         (bio, foto, nombre personalizado, etc.)
+       - Editar su perfil de presentación libremente
+       - Publicar historias, posts, reels y anuncios
 
-  8. Se crea ProviderWallet automáticamente al postularse (saldo: 0)
-     La moneda se deriva del phoneCountryIso guardado en ProviderService
-     (BO → BOB, US → USD, PE → PEN) consultando la tabla Country
+  9. Se crea ProviderWallet automáticamente al postularse (saldo: 0)
 
-Restricción: Un provider no puede postularse dos veces a la misma
-especialidad. El sistema lo bloquea con @@unique([userId, serviceTypeId]).
+Restricción: Un usuario no puede postularse dos veces a la misma
+especialidad (@@unique([userId, serviceTypeId])).
 
 
 ────────────────────────────────────────
-4.3 RECARGA DE SALDO (CLIENTE)
+5.3 CONTENIDO DEL PROVIDER
 ────────────────────────────────────────
 
-El cliente necesita saldo en su wallet para pagar servicios.
+Cada especialidad tiene su propio portafolio de contenido,
+independiente de las otras especialidades del mismo usuario.
+
+HISTORIA (estilo WhatsApp/Instagram Stories):
+  → El provider sube una foto o video corto
+  → Visible para todos los usuarios por 24 horas
+  → El cron job la elimina automáticamente al expirar
+  → Los usuarios pueden ver quién la vio (HistoryView)
+
+POST (estilo Facebook):
+  → Publicación permanente con texto y/o carrusel de fotos/videos
+  → Los usuarios pueden dar like y comentar
+  → Cualquier usuario puede guardarla como favorita (SavedPost)
+
+REEL (estilo TikTok/Instagram Reels):
+  → Video corto vertical con thumbnail
+  → Duración máx recomendada: 60 segundos
+  → Contador de reproducciones, likes y comentarios
+  → Sección propia en la app
+
+ANUNCIO PAGADO:
+  → El provider paga con su ProviderWallet para aparecer
+    destacado en los resultados de búsqueda
+  → Modelo prepago: el saldo se descuenta al crear el anuncio
+  → Activo desde startDate hasta endDate
+  → El cron job lo desactiva automáticamente al expirar
+  → Métricas: impresiones (veces mostrado) y clicks (veces tocado)
+
+
+────────────────────────────────────────
+5.4 RECARGA DE SALDO (WALLET DEL USUARIO)
+────────────────────────────────────────
+
+El usuario necesita saldo en su Wallet para pagar servicios.
 
 Pasos:
-  1. Cliente ve lista de paquetes disponibles (creados por admin)
-     Ej: Paquete Básico (10 USD), Paquete Pro (20 USD)
-     Los montos se muestran convertidos a la moneda del cliente
-     usando ExchangeRate. Ej: 10 USD = 69.60 BOB para Bolivia.
-  2. Cliente elige un paquete → se crea Recharge (PENDING)
+  1. Usuario ve lista de paquetes disponibles (creados por admin)
+     Los montos se muestran convertidos a la moneda del usuario
+     Ej: 10 USD × 6.96 = 69.60 BOB para Bolivia
+  2. Usuario elige un paquete → se crea Recharge (PENDING)
   3. Admin aprueba la recarga
   4. Backend calcula: amountUsd × ExchangeRate.rate = monto local
-  5. ClientWallet.balance += monto local
-  6. Cliente recibe notificación (push + email)
+  5. Wallet.balance += monto local
+  6. Usuario recibe notificación (push + email)
 
 
 ────────────────────────────────────────
-4.4 RECARGA DE SALDO (PROVIDER)
+5.5 RECARGA DE SALDO (PROVIDERWALLET)
 ────────────────────────────────────────
 
-El provider también puede comprar paquetes para recargar el saldo
-de una especialidad específica.
+El provider puede comprar paquetes para recargar el saldo
+de una especialidad específica (para financiar anuncios).
 
 Pasos:
-  1. Provider elige un paquete → se crea ProviderPurchase (PENDING)
-     vinculado al ProviderWallet de la especialidad elegida
+  1. Provider elige un paquete y la especialidad a recargar
+     → se crea ProviderPurchase (PENDING)
   2. Admin aprueba la compra
   3. Backend calcula: amountUsd × ExchangeRate.rate = monto local
   4. ProviderWallet.balance += monto local
@@ -206,42 +263,42 @@ Pasos:
 
 
 ────────────────────────────────────────
-4.5 SOLICITUD Y CICLO DE SERVICIO
+5.6 SOLICITUD Y CICLO DE SERVICIO
 ────────────────────────────────────────
 
 BÚSQUEDA DE PROVIDER:
   Sistema busca el ProviderService más cercano que cumpla:
   ✓ status = APPROVED
   ✓ available = true
-  ✓ serviceTypeId = el solicitado por el cliente
+  ✓ serviceTypeId = el solicitado por el usuario
   ✓ trabajos activos < SystemConfig.maxConcurrentJobs
-  ✓ distancia al cliente < coverageRadius
+  ✓ distancia al usuario < coverageRadius
 
 CICLO DE VIDA:
 
   [SEARCHING]
-      Cliente solicita servicio con descripción y ubicación
-      Sistema notifica a provider cercano disponible
+      Usuario solicita servicio con descripción y ubicación
+      Sistema notifica al provider cercano disponible
           ↓
   [ASSIGNED]
       Provider acepta el trabajo
-      Cliente recibe notificación del provider asignado
+      Usuario recibe notificación del provider asignado
           ↓
   [ON_WAY]
       Provider confirma que va en camino
-      Cliente puede ver ubicación del provider en el mapa
+      Usuario puede ver ubicación del provider en el mapa
           ↓
   [IN_PROGRESS]
       Provider llegó y comenzó el trabajo
-      Cliente y provider pueden chatear y llamarse
+      Usuario y provider pueden chatear y llamarse
           ↓
   [COMPLETED]
       Trabajo terminado
       → Pago procesado automáticamente
-      → Cliente puede calificar el servicio
+      → Usuario puede calificar el servicio
 
   En cualquier estado antes de COMPLETED:
-      → [CANCELLED] por cliente o provider
+      → [CANCELLED] por usuario o provider
 
 COMUNICACIÓN DURANTE EL SERVICIO:
   - Chat en tiempo real (texto, imágenes, notas de voz)
@@ -249,26 +306,26 @@ COMUNICACIÓN DURANTE EL SERVICIO:
 
 
 ────────────────────────────────────────
-4.6 PAGO AL COMPLETAR SERVICIO
+5.7 PAGO AL COMPLETAR SERVICIO
 ────────────────────────────────────────
 
-  precio_servicio = acordado entre cliente y provider
-  comision       = precio_servicio * SystemConfig.commissionRate
-  ganancia_neta  = precio_servicio - comision
+  precio_servicio = acordado entre usuario y provider
+  comision        = precio_servicio × SystemConfig.commissionRate
+  ganancia_neta   = precio_servicio - comision
 
-  ClientWallet.balance    -= precio_servicio
-  ProviderWallet.balance  += ganancia_neta
+  Wallet.balance         -= precio_servicio
+  ProviderWallet.balance += ganancia_neta
 
-  Si el cliente y provider usan monedas distintas:
+  Si el usuario y provider usan monedas distintas:
   → Se consulta ExchangeRate para la conversión
 
-  La moneda de cada wallet se determina por:
-  → Cliente  : ClientContact.phoneCountryIso → Country.currency
-  → Provider : ProviderService.phoneCountryIso → Country.currency
+  La moneda de cada wallet es fija (definida al crear el wallet):
+  → Wallet del usuario  : según countryIso elegido al registrarse
+  → ProviderWallet      : según countryIso elegido al postularse
 
 
 ────────────────────────────────────────
-4.7 CALIFICACIÓN
+5.8 CALIFICACIÓN
 ────────────────────────────────────────
 
   Solo disponible cuando el servicio está COMPLETED.
@@ -277,11 +334,11 @@ COMUNICACIÓN DURANTE EL SERVICIO:
 
   Al calificar se recalcula automáticamente:
   ProviderService.rating =
-    (rating_actual * totalRatings + nuevo_score) / (totalRatings + 1)
+    (rating_actual × totalRatings + nuevo_score) / (totalRatings + 1)
 
 
 ────────────────────────────────────────
-4.8 RETIRO DE GANANCIAS (PROVIDER)
+5.9 RETIRO DE GANANCIAS (PROVIDER)
 ────────────────────────────────────────
 
   El provider solicita retirar el saldo de una especialidad específica.
@@ -293,12 +350,27 @@ COMUNICACIÓN DURANTE EL SERVICIO:
     4. ProviderWallet.balance -= amount
     5. Provider recibe notificación (push + email)
 
-  Cada especialidad tiene su wallet independiente —
+  Cada especialidad tiene su ProviderWallet independiente —
   el retiro se hace por especialidad, no de forma global.
 
 
+────────────────────────────────────────
+5.10 FAVORITOS
+────────────────────────────────────────
+
+  PROVIDERS FAVORITOS (SavedProvider):
+    → El usuario guarda una especialidad como favorita
+    → Puede guardar cualquier especialidad, sin importar su rol
+    → Para encontrar rápido a su provider de confianza
+
+  PUBLICACIONES GUARDADAS (SavedPost):
+    → El usuario guarda publicaciones de providers
+    → Estilo "Guardar" de Instagram
+    → Para revisar después el trabajo de un provider
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5. PANEL DE ADMINISTRACIÓN
+6. PANEL DE ADMINISTRACIÓN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 El admin gestiona toda la plataforma:
@@ -306,10 +378,10 @@ El admin gestiona toda la plataforma:
   USUARIOS
     → Ver y bloquear/desbloquear cuentas (User.isActive)
 
-  PROVIDERS
+  ESPECIALIDADES
     → Ver postulaciones pendientes
     → Revisar documentos subidos
-    → Aprobar o rechazar especialidades
+    → Aprobar o rechazar especialidades (ProviderService)
 
   CATÁLOGO DE SERVICIOS
     → Crear nuevas categorías (ServiceType)
@@ -318,6 +390,7 @@ El admin gestiona toda la plataforma:
   PAÍSES
     → Ver lista de países (Country)
     → Activar o desactivar países del combo box
+    → El dialCode se usa para armar teléfonos en el frontend
 
   TIPOS DE CAMBIO
     → Gestionar tasas de conversión (ExchangeRate)
@@ -325,17 +398,21 @@ El admin gestiona toda la plataforma:
     → Se usan al acreditar recargas en la moneda local del usuario
 
   PAQUETES DE RECARGA
-    → Crear paquetes de recarga (Package) con precio en USD
+    → Crear paquetes con precio en USD (Package)
     → Activar o desactivar paquetes
 
-  RECARGAS DE CLIENTES
+  RECARGAS DE USUARIOS
     → Aprobar o rechazar solicitudes de recarga (Recharge)
 
   COMPRAS DE PROVIDERS
     → Aprobar o rechazar compras de paquetes (ProviderPurchase)
 
   RETIROS
-    → Aprobar o rechazar solicitudes de retiro de providers (Withdrawal)
+    → Aprobar o rechazar solicitudes de retiro (Withdrawal)
+
+  ANUNCIOS
+    → Los anuncios se desactivan automáticamente vía cron job
+    → El admin puede monitorear impresiones y clicks
 
   CONFIGURACIÓN GLOBAL (SystemConfig)
     → Ajustar comisión de la plataforma
@@ -343,12 +420,12 @@ El admin gestiona toda la plataforma:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-6. SISTEMA DE NOTIFICACIONES
+7. SISTEMA DE NOTIFICACIONES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   FCM PUSH (tiempo real, canal principal):
     → Nuevo servicio disponible para el provider
-    → Provider asignado (para el cliente)
+    → Provider asignado (para el usuario)
     → Provider va en camino
     → Nuevo mensaje en el chat
     → Llamada entrante
@@ -357,26 +434,25 @@ El admin gestiona toda la plataforma:
   EMAIL (respaldo y eventos administrativos):
     → Especialidad aprobada o rechazada
     → Recarga aprobada o rechazada
-    → Compra de paquete aprobada o rechazada (provider)
+    → Compra de paquete aprobada o rechazada
     → Retiro aprobado o rechazado
     → Cuenta suspendida
     → Código de recuperación de contraseña
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-7. STACK TECNOLÓGICO
+8. STACK TECNOLÓGICO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Backend      : NestJS (Node.js)
-  Base de datos: PostgreSQL (Neon — serverless)
-  ORM          : Prisma v7.8.0
-  Autenticación: JWT + Google OAuth
-  Contraseñas  : bcrypt
-  Imágenes     : Cloudinary (avatar + documentos con publicId para eliminar)
-  Notificaciones push: Firebase Cloud Messaging (FCM)
-  Emails       : Nodemailer + Handlebars templates
-  Documentación API: Swagger (disponible en /docs)
-  Hosting DB   : Neon (serverless PostgreSQL)
+  Backend       : NestJS (Node.js)
+  Base de datos : PostgreSQL (Neon — serverless)
+  ORM           : Prisma v7.8.0
+  Autenticación : JWT + Google OAuth
+  Contraseñas   : bcrypt
+  Imágenes/docs : Cloudinary (con publicId para eliminar)
+  Notificaciones: Firebase Cloud Messaging (FCM)
+  Emails        : Nodemailer + Handlebars templates
+  Documentación : Swagger (disponible en /docs)
   Países/monedas: Tabla Country gestionada por admin + seed inicial
   Tipos de cambio: Tabla ExchangeRate gestionada por admin
 

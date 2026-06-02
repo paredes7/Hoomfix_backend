@@ -1,8 +1,8 @@
 ================================================================
           DOCUMENTACIÓN DE API - HOOMFIX BACKEND
 ================================================================
-Fecha: 25/05/2026
-Versión: 1.0
+Fecha: 29/05/2026
+Versión: 2.0
 Base URL: /api
 ================================================================
 
@@ -13,10 +13,18 @@ Base URL: /api
 
 ────────────────────────────────────────
 POST /auth/register
-Registro de cliente — Paso 1
+Registro — Paso 1
 ────────────────────────────────────────
 
-Request:
+Cualquier persona puede registrarse. No hay roles — todos los
+usuarios son iguales al registrarse. Si quieren ofrecer servicios,
+postulan a una especialidad después (igual que Facebook).
+
+El teléfono para login va en User. El frontend arma el número así:
+  Country.dialCode + número del usuario
+  Ej: "+591" + "70012345" = "+59170012345"
+
+Request con email:
   {
     "email":      "carlos@gmail.com",
     "username":   "carlosmamani",
@@ -24,24 +32,35 @@ Request:
     "password":   "123456"
   }
 
+Request con teléfono:
+  {
+    "phone":      "+59170012345",
+    "username":   "carlosmamani",
+    "countryIso": "BO",
+    "password":   "123456"
+  }
+
+  Nota: Se debe enviar email O phone, no ambos obligatoriamente.
+        countryIso define la moneda del Wallet (fija para siempre).
+
 Tablas que se crean:
   User
-    email:    "carlos@gmail.com"
+    email:    "carlos@gmail.com"   ← o null si se registró con phone
+    phone:    null                 ← o "+59170012345" si se registró con phone
     username: "carlosmamani"
     password: "$2b$10$hash..."
-    role:     CLIENT
     isActive: true
 
-  ClientProfile
+  Profile
     userId:     → User.id
     countryIso: "BO"
     firstName:  null   ← se completa en el paso 2
     lastName:   null   ← se completa en el paso 2
 
-  ClientWallet
-    clientProfileId: → ClientProfile.id
-    currency:        "BOB"   ← se obtiene de Country según countryIso
-    balance:         0
+  Wallet
+    profileId: → Profile.id
+    currency:  "BOB"   ← se obtiene de Country según countryIso
+    balance:   0
 
 Response exitoso (201):
   {
@@ -49,15 +68,15 @@ Response exitoso (201):
     "user": {
       "id":       "uuid",
       "email":    "carlos@gmail.com",
+      "phone":    null,
       "username": "carlosmamani",
-      "role":     "CLIENT",
       "isActive": true,
-      "clientProfile": {
+      "profile": {
         "id":         "uuid",
         "countryIso": "BO",
         "firstName":  null,
         "lastName":   null,
-        "clientWallet": {
+        "wallet": {
           "currency": "BOB",
           "balance":  0
         }
@@ -69,6 +88,12 @@ Response — email ya registrado (409):
   {
     "statusCode": 409,
     "message":   "El email ya está registrado"
+  }
+
+Response — teléfono ya registrado (409):
+  {
+    "statusCode": 409,
+    "message":   "El teléfono ya está registrado"
   }
 
 Response — username ya en uso (409):
@@ -90,81 +115,12 @@ Response — país no existe (400):
 
 
 ────────────────────────────────────────
-POST /auth/register/technician
-Registro de provider — Paso 1
-────────────────────────────────────────
-
-Request:
-  {
-    "email":      "juan@gmail.com",
-    "username":   "juanquispe",
-    "countryIso": "BO",
-    "password":   "123456"
-  }
-
-Tablas que se crean:
-  User
-    email:    "juan@gmail.com"
-    username: "juanquispe"
-    password: "$2b$10$hash..."
-    role:     PROVIDER
-    isActive: true
-
-  ProviderProfile
-    userId:     → User.id
-    countryIso: "BO"   ← solo identifica de qué país es el provider
-    firstName:  null   ← se completa en el paso 2
-    lastName:   null   ← se completa en el paso 2
-
-  Nota: El provider NO tiene wallet al registrarse.
-        El wallet se crea al postularse a una especialidad.
-
-Response exitoso (201):
-  {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id":       "uuid",
-      "email":    "juan@gmail.com",
-      "username": "juanquispe",
-      "role":     "PROVIDER",
-      "isActive": true,
-      "providerProfile": {
-        "id":         "uuid",
-        "countryIso": "BO",
-        "firstName":  null,
-        "lastName":   null
-      }
-    }
-  }
-
-Response — email ya registrado (409):
-  {
-    "statusCode": 409,
-    "message":   "El email ya está registrado"
-  }
-
-Response — username ya en uso (409):
-  {
-    "statusCode": 409,
-    "message":    "El username ya está en uso",
-    "suggestions": [
-      "juanquispe1",
-      "juanquispe2",
-      "juanquispe_ok"
-    ]
-  }
-
-Response — país no existe (400):
-  {
-    "statusCode": 400,
-    "message":   "El país seleccionado no existe"
-  }
-
-
-────────────────────────────────────────
 POST /auth/login
-Inicio de sesión (email o username)
+Inicio de sesión
 ────────────────────────────────────────
+
+El campo "identifier" acepta email, username o teléfono.
+El backend detecta automáticamente cuál es.
 
 Request con email:
   {
@@ -178,21 +134,27 @@ Request con username:
     "password":   "123456"
   }
 
+Request con teléfono:
+  {
+    "identifier": "+59170012345",
+    "password":   "123456"
+  }
+
 Response exitoso (200):
   {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "user": {
       "id":       "uuid",
       "email":    "carlos@gmail.com",
+      "phone":    null,
       "username": "carlosmamani",
-      "role":     "CLIENT",
       "isActive": true,
-      "clientProfile": {
+      "profile": {
         "id":          "uuid",
         "countryIso":  "BO",
         "firstName":   "Carlos",
         "lastName":    "Mamani",
-        "lastLoginAt": "2026-05-25T10:00:00.000Z"
+        "lastLoginAt": "2026-05-29T10:00:00.000Z"
       }
     }
   }
@@ -254,92 +216,51 @@ Response — token de Google inválido (401):
 
 ────────────────────────────────────────
 POST /auth/google/complete
-Completar registro con Google — elige username, país y rol
+Completar registro con Google — elige username y país
 ────────────────────────────────────────
 
-Request (cliente):
+Request:
   {
     "tempToken":  "eyJ...",
     "username":   "carlosmamani",
-    "countryIso": "BO",
-    "role":       "CLIENT"
+    "countryIso": "BO"
   }
 
-Request (provider):
-  {
-    "tempToken":  "eyJ...",
-    "username":   "juanquispe",
-    "countryIso": "BO",
-    "role":       "PROVIDER"
-  }
-
-Tablas que se crean — Cliente:
+Tablas que se crean:
   User
-    email:    "carlos@gmail.com"   ← del tempToken
+    email:    "carlos@gmail.com"   ← del tempToken (viene de Google)
+    phone:    null
     username: "carlosmamani"
     password: ""                   ← vacío, solo entra con Google
-    role:     CLIENT
+    isActive: true
 
-  ClientProfile
+  Profile
     firstName:  "Carlos"           ← del tempToken (viene de Google)
     lastName:   "Mamani"           ← del tempToken (viene de Google)
     countryIso: "BO"
 
-  ClientWallet
+  Wallet
     currency: "BOB"
     balance:  0
 
-Tablas que se crean — Provider:
-  User
-    email:    "juan@gmail.com"
-    username: "juanquispe"
-    password: ""                   ← vacío, solo entra con Google
-    role:     PROVIDER
-
-  ProviderProfile
-    firstName:  "Juan"             ← del tempToken (viene de Google)
-    lastName:   "Quispe"           ← del tempToken (viene de Google)
-    countryIso: "BO"
-
-  Nota: El provider NO tiene wallet al registrarse.
-        El wallet se crea al postularse a una especialidad.
-
-Response exitoso (201) — Cliente:
+Response exitoso (201):
   {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "user": {
       "id":       "uuid",
       "email":    "carlos@gmail.com",
+      "phone":    null,
       "username": "carlosmamani",
-      "role":     "CLIENT",
       "isActive": true,
-      "clientProfile": {
+      "profile": {
         "id":         "uuid",
         "countryIso": "BO",
         "firstName":  "Carlos",
         "lastName":   "Mamani",
-        "clientWallet": {
+        "wallet": {
           "currency": "BOB",
           "balance":  0
         }
-      }
-    }
-  }
-
-Response exitoso (201) — Provider:
-  {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id":       "uuid",
-      "email":    "juan@gmail.com",
-      "username": "juanquispe",
-      "role":     "PROVIDER",
-      "isActive": true,
-      "providerProfile": {
-        "id":         "uuid",
-        "countryIso": "BO",
-        "firstName":  "Juan",
-        "lastName":   "Quispe"
       }
     }
   }
@@ -404,7 +325,6 @@ Response — código inválido o expirado (400):
   }
 
 
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2. PERFIL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -415,30 +335,23 @@ Completar perfil — Paso 2
 Requiere: Authorization: Bearer <access_token>
 ────────────────────────────────────────
 
-Request (cliente):
+Request:
   {
     "firstName": "Carlos",
     "lastName":  "Mamani",
     "phones":    ["+591 70012345"]
   }
 
-Request (provider):
-  {
-    "firstName": "Juan",
-    "lastName":  "Quispe"
-  }
-
   Nota: "phones" es opcional. Máximo 3 números.
-        El provider agrega teléfonos al postularse a una especialidad.
 
-Response exitoso (200) — Cliente:
+Response exitoso (200):
   {
     "id":       "uuid",
     "email":    "carlos@gmail.com",
+    "phone":    null,
     "username": "carlosmamani",
-    "role":     "CLIENT",
     "isActive": true,
-    "clientProfile": {
+    "profile": {
       "id":         "uuid",
       "countryIso": "BO",
       "firstName":  "Carlos",
@@ -447,33 +360,17 @@ Response exitoso (200) — Cliente:
       "contacts": [
         { "id": "uuid", "phone": "+591 70012345" }
       ],
-      "clientWallet": {
+      "wallet": {
         "currency": "BOB",
         "balance":  0
       }
     }
   }
 
-Response exitoso (200) — Provider:
-  {
-    "id":       "uuid",
-    "email":    "juan@gmail.com",
-    "username": "juanquispe",
-    "role":     "PROVIDER",
-    "isActive": true,
-    "providerProfile": {
-      "id":         "uuid",
-      "countryIso": "BO",
-      "firstName":  "Juan",
-      "lastName":   "Quispe",
-      "avatar":     null
-    }
-  }
-
 Response — perfil no encontrado (404):
   {
     "statusCode": 404,
-    "message":   "Perfil de cliente no encontrado"
+    "message":   "Perfil no encontrado"
   }
 
 Response — demasiados teléfonos (400):
@@ -483,29 +380,23 @@ Response — demasiados teléfonos (400):
   }
 
 
-
-
-
-
-
-
-
-
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3. ESPECIALIDADES (PROVIDER)
+3. ESPECIALIDADES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ────────────────────────────────────────
 POST /specialties/apply
 Postularse a una especialidad
-Requiere: Authorization: Bearer <access_token>  (solo PROVIDER)
+Requiere: Authorization: Bearer <access_token>
 ────────────────────────────────────────
 
+Cualquier usuario puede postularse a ofrecer un servicio.
+No necesita un rol especial — igual que crear una página en Facebook.
+
 Flujo previo:
-  1. El frontend carga GET /service-types  → lista de categorías (Gasfitería, Electricidad, etc.)
+  1. El frontend carga GET /service-types  → lista de categorías
   2. El frontend carga GET /countries      → combo de países donde va a trabajar
-  3. Si hay documentos, el frontend los sube a Cloudinary primero y obtiene las URLs
+  3. Si hay documentos, el frontend los sube a Cloudinary primero
   4. Recién entonces llama a este endpoint
 
 Request:
@@ -519,7 +410,7 @@ Request:
     ],
 
     "profile": {
-      "bio":               "Electricista con 5 años de experiencia en instalaciones residenciales.",
+      "bio":               "Electricista con 5 años de experiencia.",
       "experience":        5,
       "coverageRadius":    10.0,
       "commercialName":    "JuanElec",
@@ -531,18 +422,12 @@ Request:
         "url":      "https://res.cloudinary.com/.../certificado.pdf",
         "publicId": "hoomfix/docs/certificado_abc123",
         "name":     "Certificado de electricista"
-      },
-      {
-        "url":      "https://res.cloudinary.com/.../carnet.jpg",
-        "publicId": "hoomfix/docs/carnet_abc123",
-        "name":     "Carnet de identidad"
       }
     ]
   }
 
   Nota: "phones", "profile" y "documents" son opcionales.
-        El provider puede completarlos después.
-        Un provider NO puede postularse dos veces a la misma especialidad.
+        Un usuario NO puede postularse dos veces a la misma especialidad.
 
 Tablas que se crean:
   ProviderService
@@ -558,34 +443,23 @@ Tablas que se crean:
     balance:           0
 
   ProviderServiceProfile  (si se envía "profile")
-    bio:               "Electricista con 5 años..."
-    experience:        5
-    coverageRadius:    10.0
-    commercialName:    "JuanElec"
-    customServiceName: "Electricidad Express"
-
-  ProviderDocument[]  (uno por cada item en "documents")
-    url:      "https://res.cloudinary.com/..."
-    publicId: "hoomfix/docs/certificado_abc123"
-    name:     "Certificado de electricista"
-
-  ProviderContact[]  (uno por cada item en "phones")
-    phone: "+591 70012345"
+  ProviderDocument[]      (uno por cada item en "documents")
+  ProviderContact[]       (uno por cada item en "phones")
 
 Response exitoso (201):
   {
-    "id":           "uuid",
-    "userId":       "uuid",
-    "serviceTypeId":"uuid",
-    "countryIso":   "BO",
-    "status":       "PENDING",
-    "available":    false,
+    "id":            "uuid",
+    "userId":        "uuid",
+    "serviceTypeId": "uuid",
+    "countryIso":    "BO",
+    "status":        "PENDING",
+    "available":     false,
     "providerWallet": {
       "currency": "BOB",
       "balance":  0
     },
     "profile": {
-      "bio":               "Electricista con 5 años de experiencia...",
+      "bio":               "Electricista con 5 años de experiencia.",
       "experience":        5,
       "coverageRadius":    10.0,
       "commercialName":    "JuanElec",
@@ -593,9 +467,9 @@ Response exitoso (201):
     },
     "documents": [
       {
-        "id":       "uuid",
-        "url":      "https://res.cloudinary.com/.../certificado.pdf",
-        "name":     "Certificado de electricista"
+        "id":   "uuid",
+        "url":  "https://res.cloudinary.com/.../certificado.pdf",
+        "name": "Certificado de electricista"
       }
     ],
     "providerContacts": [
@@ -632,59 +506,41 @@ Lista de paquetes disponibles
 Requiere: Authorization: Bearer <access_token>
 ────────────────────────────────────────
 
-  El frontend carga este listado para mostrárselo al usuario
-  antes de que elija con qué paquete recargar.
-
 Response (200):
   [
-    {
-      "id":        "uuid",
-      "name":      "Paquete Básico",
-      "amountUsd": 5.00
-    },
-    {
-      "id":        "uuid",
-      "name":      "Paquete Estándar",
-      "amountUsd": 10.00
-    },
-    {
-      "id":        "uuid",
-      "name":      "Paquete Pro",
-      "amountUsd": 25.00
-    }
+    { "id": "uuid", "name": "Paquete Básico",    "amountUsd": 5.00  },
+    { "id": "uuid", "name": "Paquete Estándar",  "amountUsd": 10.00 },
+    { "id": "uuid", "name": "Paquete Pro",       "amountUsd": 25.00 }
   ]
 
-  Nota: El monto que ve el usuario en pantalla se calcula en el frontend:
-        amountLocal = amountUsd × ExchangeRate.rate (para su moneda)
+  Nota: El monto local se calcula en el frontend:
+        amountLocal = amountUsd × ExchangeRate.rate
         Ejemplo: $10 USD × 6.96 = 69.60 BOB
 
 
 ────────────────────────────────────────
 POST /wallet/recharge
-Solicitar recarga de saldo — Cliente
-Requiere: Authorization: Bearer <access_token>  (solo CLIENT)
+Solicitar recarga de saldo — Usuario
+Requiere: Authorization: Bearer <access_token>
 ────────────────────────────────────────
 
 Flujo:
-  1. Cliente ve lista de paquetes (GET /packages)
-  2. Elige un paquete y confirma
-  3. Se crea Recharge en estado PENDING
-  4. El admin revisa y aprueba desde el panel
-  5. Al aprobar → ClientWallet.balance += package.amountUsd × ExchangeRate.rate
+  1. Usuario elige paquete (GET /packages)
+  2. Se crea Recharge en estado PENDING
+  3. Admin aprueba → Wallet.balance += package.amountUsd × ExchangeRate.rate
 
 Request:
   {
     "packageId": "uuid-del-paquete"
   }
 
-  Nota: El clientWalletId se obtiene automáticamente del JWT.
-        No se pide al usuario.
+  Nota: El walletId se obtiene automáticamente del JWT.
 
 Tabla que se crea:
   Recharge
-    clientWalletId: → del JWT
-    packageId:      "uuid-del-paquete"
-    status:         PENDING
+    walletId:  → del JWT
+    packageId: "uuid-del-paquete"
+    status:    PENDING
 
 Response exitoso (201):
   {
@@ -695,7 +551,7 @@ Response exitoso (201):
       "name":      "Paquete Estándar",
       "amountUsd": 10.00
     },
-    "createdAt": "2026-05-26T10:00:00.000Z"
+    "createdAt": "2026-05-29T10:00:00.000Z"
   }
 
 Response — paquete no existe o inactivo (400):
@@ -707,23 +563,21 @@ Response — paquete no existe o inactivo (400):
 
 ────────────────────────────────────────
 POST /wallet/purchase
-Comprar paquete — Provider
-Requiere: Authorization: Bearer <access_token>  (solo PROVIDER)
+Comprar paquete — Provider (para ProviderWallet)
+Requiere: Authorization: Bearer <access_token>
 ────────────────────────────────────────
 
 Flujo:
-  1. Provider ve lista de paquetes (GET /packages)
-  2. Elige un paquete y la especialidad donde quiere acreditar el saldo
-  3. Se crea ProviderPurchase en estado PENDING
-  4. El admin revisa y aprueba desde el panel
-  5. Al aprobar → ProviderWallet.balance += package.amountUsd × ExchangeRate.rate
+  1. Usuario elige paquete y la especialidad donde acreditar el saldo
+  2. Se crea ProviderPurchase en estado PENDING
+  3. Admin aprueba → ProviderWallet.balance += package.amountUsd × ExchangeRate.rate
 
-  Nota: El provider puede tener múltiples especialidades (ProviderService),
-        cada una con su propio wallet. Por eso debe indicar cuál recarga.
+  Nota: Se debe indicar la especialidad porque un usuario puede tener
+        varias (cada una con su propio ProviderWallet).
 
 Request:
   {
-    "packageId":        "uuid-del-paquete",
+    "packageId":         "uuid-del-paquete",
     "providerServiceId": "uuid-de-la-especialidad"
   }
 
@@ -735,18 +589,18 @@ Tabla que se crea:
 
 Response exitoso (201):
   {
-    "id":               "uuid",
-    "packageId":        "uuid-del-paquete",
-    "providerServiceId":"uuid-de-la-especialidad",
-    "status":           "PENDING",
+    "id":                "uuid",
+    "packageId":         "uuid-del-paquete",
+    "providerServiceId": "uuid-de-la-especialidad",
+    "status":            "PENDING",
     "package": {
       "name":      "Paquete Pro",
       "amountUsd": 25.00
     },
-    "createdAt": "2026-05-26T10:00:00.000Z"
+    "createdAt": "2026-05-29T10:00:00.000Z"
   }
 
-Response — especialidad no pertenece al provider (403):
+Response — especialidad no pertenece al usuario (403):
   {
     "statusCode": 403,
     "message":   "No tienes acceso a esta especialidad"
@@ -767,9 +621,21 @@ AUTENTICACIÓN DE ENDPOINTS PROTEGIDOS:
   Header: Authorization: Bearer <access_token>
 
 FLUJO DE REGISTRO EN DOS PASOS:
-  Paso 1 → POST /auth/register         (crea cuenta, devuelve token)
-  Paso 2 → PUT  /profile/complete      (completa nombre, teléfono, foto)
+  Paso 1 → POST /auth/register    (crea cuenta, devuelve token)
+  Paso 2 → PUT  /profile/complete (completa nombre, teléfonos de contacto)
            El usuario ya está autenticado con el token del paso 1.
+
+REGISTRO CON GOOGLE (un solo flujo):
+  POST /auth/google       → si ya existe: login directo
+                          → si es nuevo: devuelve tempToken
+  POST /auth/google/complete → elige username + país → acceso directo
+  No requiere Paso 2 — firstName y lastName vienen de Google.
+
+LOGIN — 4 identificadores aceptados:
+  { "identifier": "carlos@gmail.com" }   ← email
+  { "identifier": "carlosmamani"     }   ← username
+  { "identifier": "+59170012345"     }   ← teléfono de login (User.phone)
+  Google OAuth                           ← POST /auth/google
 
 USERNAME:
   - Solo letras y números (sin espacios ni caracteres especiales)
@@ -779,7 +645,11 @@ USERNAME:
 COUNTRYISO:
   - Código ISO de 2 letras (ej: BO, US, PE, AR)
   - Se obtiene del combo box que carga desde GET /countries
-  - Para el cliente define la moneda del ClientWallet (fija para siempre)
-  - Para el provider solo identifica su país de origen
+  - Define la moneda del Wallet del usuario (fija para siempre)
+  - El frontend obtiene el dialCode de Country para armar el teléfono
+
+TELÉFONO DE LOGIN vs TELÉFONO DE CONTACTO:
+  User.phone   → credencial de login, único global, máx 1
+  Contact.phone → número de contacto visible en el perfil, hasta 3
 
 ================================================================

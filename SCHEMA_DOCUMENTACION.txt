@@ -1,7 +1,7 @@
 ================================================================
      DOCUMENTACIÓN DEL SCHEMA PRISMA - HOOMFIX BACKEND
 ================================================================
-Fecha: 28/05/2026
+Fecha: 29/05/2026
 Base de datos: PostgreSQL (Neon)
 ORM: Prisma v7.8.0
 Tipo de aplicación: Marketplace de servicios on-demand
@@ -13,29 +13,26 @@ Modelo de negocio: Comisión por transacción (take-rate model)
 1. ENUMS (Tipos enumerados)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Role             → CLIENT | PROVIDER | ADMIN
-                 Define el tipo de usuario en el sistema.
-
 ProviderStatus   → PENDING | APPROVED | REJECTED
-                 Estado de verificación de un provider en una especialidad.
+                 Estado de verificación de un usuario en una especialidad.
                  El admin aprueba o rechaza según los documentos subidos.
 
 ServiceStatus    → SEARCHING | ASSIGNED | ON_WAY | IN_PROGRESS | COMPLETED | CANCELLED
-                 Ciclo de vida de un servicio desde que el cliente lo solicita
+                 Ciclo de vida de un servicio desde que el usuario lo solicita
                  hasta que se completa o cancela.
 
 MessageType      → TEXT | IMAGE | AUDIO
                  Tipo de mensaje dentro del chat de un servicio.
 
 CallType         → VOICE | VIDEO
-                 Tipo de llamada entre cliente y provider.
+                 Tipo de llamada entre usuario y provider.
 
 CallStatus       → INITIATED | ACCEPTED | REJECTED | ENDED | MISSED
                  Estado de una llamada en tiempo real.
 
 RechargeStatus   → PENDING | APPROVED | REJECTED
                  Estado de una recarga de saldo. Se usa en dos modelos:
-                   - Recharge         → recarga del ClientWallet del cliente
+                   - Recharge         → recarga del Wallet del usuario
                    - ProviderPurchase → recarga del ProviderWallet del provider
 
 WithdrawalStatus → PENDING | APPROVED | REJECTED
@@ -54,8 +51,10 @@ COUNTRY
 ────────────────────────────────────────
 Propósito: Catálogo de países gestionado por el admin.
 El frontend usa esta tabla para poblar el combo box de selección
-de país al registrarse. Define el código de marcado y la moneda
-local de cada país. Se llena inicialmente con el seed.
+de país al registrarse. Define el código de marcado telefónico
+(dialCode) y la moneda local de cada país.
+El dialCode lo usa el frontend para armar el teléfono de login:
+  Country.dialCode + número = User.phone  (ej: +591 + 70012345)
 
 Campos:
   - iso       → Código ISO del país, clave primaria (ej: BO, US, PE)
@@ -67,9 +66,8 @@ Campos:
   - updatedAt → Última actualización
 
 Relaciones:
-  - clientProfiles   → Perfiles de clientes de este país
-  - providerProfiles → Perfiles de providers de este país
-  - providerServices → Especialidades de providers registradas en este país
+  - profiles         → Usuarios registrados en este país (1 a N)
+  - providerServices → Especialidades registradas en este país (1 a N)
 
 
 ────────────────────────────────────────
@@ -90,7 +88,7 @@ Relaciones: Ninguna (tabla de configuración independiente)
 EXCHANGERATE
 ────────────────────────────────────────
 Propósito: Tipos de cambio para convertir paquetes de USD a la moneda
-local del cliente o provider. El admin actualiza las tasas desde el panel.
+local del usuario. El admin actualiza las tasas desde el panel.
 Siempre fromCurrency = "USD".
 
 Campos:
@@ -112,7 +110,7 @@ Ejemplo de datos:
 
 Uso en el flujo de recargas:
   Package.amountUsd × ExchangeRate.rate = monto en moneda local
-  Ej: 10 USD × 6.96 = 69.60 BOB acreditados al ClientWallet
+  Ej: 10 USD × 6.96 = 69.60 BOB acreditados al Wallet
 
 
 ────────────────────────────────────────
@@ -130,118 +128,107 @@ Campos:
   - updatedAt   → Última actualización
 
 Relaciones:
-  - providerServices → Providers registrados en esta categoría
-  - services         → Servicios solicitados de esta categoría
+  - providerServices → Especialidades registradas en esta categoría (1 a N)
+  - services         → Servicios solicitados de esta categoría (1 a N)
 
 
 ────────────────────────────────────────
 USER
 ────────────────────────────────────────
-Propósito: Modelo base SOLO para autenticación. Cualquier usuario
-(cliente, provider o admin) tiene un User. Los datos personales
-viven en ClientProfile o ProviderProfile.
+Propósito: Modelo base SOLO para autenticación. Cualquier persona que
+use la app tiene un User. No tiene rol fijo — cualquier usuario puede
+postularse a ser provider cuando quiera (filosofía Facebook).
+Los datos personales viven en Profile.
 
 Campos:
-  - email               → Correo para iniciar sesión (único, opcional para Google)
+  - email               → Correo para iniciar sesión (único, opcional si se
+                          registra con teléfono, vacío "" para cuentas Google)
+  - phone               → Teléfono para iniciar sesión (único, opcional si se
+                          registra con email). Diferente a Contact.phone —
+                          este es credencial de login, no número de contacto.
+                          El frontend lo arma: Country.dialCode + número
   - username            → Elegido por el usuario al registrarse.
-                          Solo letras y números. Si ya existe, el backend
-                          sugiere 3 alternativas disponibles.
-  - password            → Hash bcrypt de la contraseña (vacío para cuentas Google)
-  - role                → CLIENT | PROVIDER | ADMIN
+                          Solo letras y números, sin espacios.
+                          Si ya existe, el backend sugiere 3 alternativas.
+  - password            → Hash bcrypt de la contraseña
+                          (vacío "" para cuentas Google — solo entran con OAuth)
   - isActive            → false = cuenta bloqueada por el admin
-  - fcmToken            → Token Firebase para notificaciones push
-  - resetPasswordToken  → Hash del código de recuperación de contraseña
+  - fcmToken            → Token Firebase para notificaciones push en tiempo real
+  - resetPasswordToken  → Hash del código de recuperación de contraseña (6 dígitos)
   - resetPasswordExpiry → Expiración del código de recuperación (15 minutos)
   - createdAt           → Fecha de creación
   - updatedAt           → Última actualización
 
-Login soporta 3 opciones:
+Login soporta 4 opciones:
   1. email + contraseña
   2. username + contraseña
-  3. Google OAuth (flujo de 2 pasos para usuarios nuevos)
+  3. teléfono + contraseña  (User.phone)
+  4. Google OAuth (flujo de 2 pasos para usuarios nuevos)
+
+Regla: el usuario debe tener al menos email O phone al registrarse.
 
 Relaciones:
-  - clientProfile    → 1 a 1 opcional. Existe si role = CLIENT
-  - providerProfile  → 1 a 1 opcional. Existe si role = PROVIDER
-  - providerServices → 1 a muchos. Especialidades si role = PROVIDER
-  - sentMessages     → Mensajes enviados en servicios
-  - clientServices   → Servicios solicitados (solo clientes)
-  - ratings          → Calificaciones dadas (solo clientes)
-  - historyViews     → Historias vistas (cualquier rol)
-  - savedProviders   → Especialidades guardadas como favoritas
-  - postLikes        → Likes dados a publicaciones
-  - postComments     → Comentarios en publicaciones
-  - reelLikes        → Likes dados a reels
-  - reelComments     → Comentarios en reels
-  - savedBy          → Publicaciones guardadas como favoritas
+  - profile          → Datos personales y wallet (1 a 1)
+  - providerServices → Especialidades en las que actúa como provider (1 a N)
+  - sentMessages     → Mensajes enviados en servicios (1 a N)
+  - clientServices   → Servicios solicitados (1 a N)
+  - ratings          → Calificaciones dadas a providers (1 a N)
+  - historyViews     → Historias vistas (1 a N)
+  - savedProviders   → Especialidades guardadas como favoritas (1 a N)
+  - savedPosts       → Publicaciones guardadas como favoritas (1 a N)
+  - postLikes        → Likes dados a publicaciones (1 a N)
+  - postComments     → Comentarios escritos en publicaciones (1 a N)
+  - reelLikes        → Likes dados a reels (1 a N)
+  - reelComments     → Comentarios escritos en reels (1 a N)
 
 
 ────────────────────────────────────────
-CLIENTPROFILE
+PROFILE
 ────────────────────────────────────────
-Propósito: Datos personales del cliente. Se crea automáticamente
-al registrarse como CLIENT. Tiene su propio ClientWallet.
+Propósito: Perfil único de cada usuario. Se crea automáticamente al
+registrarse. Contiene datos personales, foto de perfil y la billetera
+para pagar servicios. Cualquier usuario puede también ser provider —
+el perfil es el mismo para ambos roles (no hay ProviderProfile separado).
 
 Campos:
-  - userId         → FK a User (1 a 1)
-  - countryIso     → FK a Country — define la moneda del ClientWallet.
-                     Se elige al registrarse y NO cambia nunca.
-  - firstName      → Nombre (nullable — se completa en el paso 2 del registro)
-  - lastName       → Apellido (nullable — se completa en el paso 2 del registro)
+  - userId         → FK a User (1 a 1, único)
+  - countryIso     → FK a Country — define la moneda del Wallet.
+                     Se elige al registrarse y NUNCA cambia.
+  - firstName      → Nombre del usuario (nullable — se completa en el paso 2)
+  - lastName       → Apellido del usuario (nullable — se completa en el paso 2)
   - avatar         → URL pública de la foto de perfil en Cloudinary
-  - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
+  - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la foto
   - referralCode   → Código único para referir a otros usuarios
-  - lastLoginAt    → Último inicio de sesión
+  - lastLoginAt    → Último inicio de sesión — se actualiza en cada login
   - createdAt      → Fecha de creación
   - updatedAt      → Última actualización
 
 Relaciones:
-  - clientWallet → Billetera para pagar servicios (1 a 1)
-  - contacts     → Números de contacto del cliente (1 a N)
-  - user         → Pertenece a un User (1 a 1)
-  - country      → Pertenece a un Country (define la moneda)
-
-
-────────────────────────────────────────
-PROVIDERPROFILE
-────────────────────────────────────────
-Propósito: Datos personales del provider. UN solo perfil sin importar
-cuántas especialidades tenga. Se crea al registrarse como PROVIDER.
-Las especialidades viven en ProviderService.
-
-Campos:
-  - userId         → FK a User (1 a 1)
-  - countryIso     → FK a Country — identifica de qué país es el provider.
-                     Solo informativo. No define moneda (eso lo hace ProviderService).
-  - firstName      → Nombre (nullable — se completa en el paso 2 del registro)
-  - lastName       → Apellido (nullable — se completa en el paso 2 del registro)
-  - avatar         → URL pública de la foto de perfil en Cloudinary
-  - avatarPublicId → public_id de Cloudinary para reemplazar o eliminar la imagen
-  - referralCode   → Código único para referir a otros usuarios
-  - lastLoginAt    → Último inicio de sesión
-  - createdAt      → Fecha de creación
-  - updatedAt      → Última actualización
-
-Relaciones:
-  - user    → Pertenece a un User (1 a 1)
-  - country → Pertenece a un Country (informativo)
+  - wallet   → Billetera para pagar servicios (1 a 1)
+  - contacts → Números de contacto visibles del usuario (1 a N, máx 3)
+  - user     → Pertenece a un User (N a 1)
+  - country  → Pertenece a un Country — define la moneda del wallet (N a 1)
 
 
 ────────────────────────────────────────
 CONTACT
 ────────────────────────────────────────
-Propósito: Números de contacto del cliente. Un cliente puede tener
-múltiples números (máx 3). Separado de ClientProfile para permitir
-varios registros por cliente.
+Propósito: Números de contacto visibles del usuario en su perfil.
+Un usuario puede tener hasta 3 números. Separado de Profile para
+permitir múltiples registros sin campos nullable.
+
+Diferencia con User.phone:
+  User.phone    → credencial de login, único global, máx 1
+  Contact.phone → número visible en el perfil, hasta 3, informativo
 
 Campos:
-  - clientProfileId → FK a ClientProfile
-  - phone           → Número de teléfono único en la plataforma
-  - createdAt       → Fecha de creación
-  - updatedAt       → Última actualización
+  - profileId → FK a Profile — número pertenece a un solo usuario
+  - phone     → Número de teléfono único en toda la plataforma
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
-  - clientProfile → Pertenece a un ClientProfile
+  - profile → Pertenece a un Profile (N a 1)
 
 
 ────────────────────────────────────────
@@ -253,63 +240,65 @@ ProviderService para permitir varios registros por especialidad.
 
 Campos:
   - providerServiceId → FK a ProviderService
-  - phone             → Número de teléfono único en la plataforma
+  - phone             → Número de teléfono único en toda la plataforma
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
 Relaciones:
-  - providerService → Pertenece a un ProviderService
+  - providerService → Pertenece a un ProviderService (N a 1)
 
 
 ────────────────────────────────────────
 PROVIDERSERVICE
 ────────────────────────────────────────
-Propósito: Datos OPERATIVOS de una especialidad del provider. Un usuario
-con role PROVIDER puede tener MÚLTIPLES registros ProviderService, uno
-por cada tipo de servicio en el que está habilitado.
+Propósito: Especialidad de un usuario como provider. Cualquier usuario
+puede postularse a una o más especialidades sin restricción de rol.
+Cada especialidad es independiente: tiene su propio estado de
+verificación, calificación, wallet de ganancias, y portafolio de
+contenido (historias, posts, reels, anuncios).
 
-Ejemplo: Un provider puede tener Gasfitería y Electricidad, cada uno
-con su propio estado de verificación, calificación, wallet y disponibilidad.
-Igual que Uber — un solo login, múltiples modalidades de trabajo.
+Modelo similar a Uber — un solo login, múltiples modalidades de trabajo.
+Modelo similar a Facebook — un usuario puede crear múltiples "páginas".
 
-Restricción: @@unique([userId, serviceTypeId]) → No puede postularse
-             dos veces a la misma especialidad.
+Restricción: @@unique([userId, serviceTypeId])
+             Un usuario no puede postularse dos veces a la misma especialidad.
 
 Campos:
-  - userId        → Provider al que pertenece esta especialidad
-  - serviceTypeId → Tipo de servicio (Gasfitería, Electricidad, etc.)
+  - userId        → FK a User — usuario que se postuló
+  - serviceTypeId → FK a ServiceType — tipo de servicio (Gasfitería, etc.)
   - countryIso    → FK a Country — define la moneda del ProviderWallet.
-                    Se elige al postularse y NO cambia nunca.
-  - status        → PENDING | APPROVED | REJECTED (el admin verifica documentos)
-  - available     → true = disponible para recibir nuevos trabajos ahora mismo
+                    Se elige al postularse y NUNCA cambia.
+  - status        → PENDING → APPROVED (puede trabajar) | REJECTED
+  - available     → true = disponible para recibir trabajos ahora mismo
   - rating        → Promedio de calificaciones (0.0 a 5.0)
-  - totalRatings  → Cantidad total de calificaciones recibidas
-  - latitude      → Ubicación actual para encontrar el provider más cercano
+  - totalRatings  → Total de calificaciones (usado para calcular el promedio)
+  - latitude      → Ubicación actual — para encontrar el provider más cercano
   - longitude     → Ubicación actual
   - createdAt     → Fecha de creación
   - updatedAt     → Última actualización
 
 Relaciones:
-  - user            → Pertenece a un User
-  - serviceType     → Pertenece a un ServiceType
-  - country         → Pertenece a un Country (define moneda del wallet)
-  - providerWallet  → Billetera de ganancias (1 a 1)
-  - profile         → Perfil de presentación (1 a 1)
-  - documents       → Documentos de verificación (1 a N)
-  - providerContacts→ Números de contacto de esta especialidad (1 a N)
-  - services        → Servicios atendidos (1 a N)
-  - histories       → Historias publicadas (1 a N)
-  - posts           → Publicaciones tipo Facebook (1 a N)
-  - reels           → Reels cortos tipo TikTok (1 a N)
-  - anuncios        → Anuncios pagados (1 a N)
-  - savedBy         → Usuarios que guardaron esta especialidad como favorita (1 a N)
+  - user             → Pertenece a un User (N a 1)
+  - serviceType      → Pertenece a un ServiceType (N a 1)
+  - country          → Pertenece a un Country — define moneda del wallet (N a 1)
+  - providerWallet   → Billetera de ganancias (1 a 1)
+  - profile          → Perfil de presentación visible para clientes (1 a 1)
+  - documents        → Documentos y certificados de verificación (1 a N)
+  - providerContacts → Números de contacto de esta especialidad (1 a N)
+  - services         → Servicios atendidos con esta especialidad (1 a N)
+  - histories        → Historias publicadas — expiran en 24h (1 a N)
+  - posts            → Publicaciones permanentes tipo Facebook (1 a N)
+  - reels            → Videos cortos tipo TikTok/Reels (1 a N)
+  - anuncios         → Anuncios pagados para aparecer destacado (1 a N)
+  - savedBy          → Usuarios que guardaron esta especialidad como favorita (1 a N)
 
 
 ────────────────────────────────────────
 PROVIDERSERVICEPROFILE
 ────────────────────────────────────────
 Propósito: Datos de PRESENTACIÓN de una especialidad. Contiene todo
-lo que el cliente ve y lo que el provider puede editar libremente.
+lo que el cliente ve al buscar un provider: bio, experiencia, foto,
+nombre personalizado. El provider puede editarlo libremente.
 Se crea al postularse junto con ProviderService.
 
 Separación de responsabilidades:
@@ -317,13 +306,13 @@ Separación de responsabilidades:
   ProviderServiceProfile → datos de presentación (bio, foto, nombre personalizado)
 
 Campos:
-  - providerServiceId    → FK a ProviderService (1 a 1)
+  - providerServiceId    → FK a ProviderService (1 a 1, único)
   - bio                  → Descripción profesional para esta especialidad
-  - experience           → Años de experiencia
+  - experience           → Años de experiencia en esta especialidad
   - coverageRadius       → Radio máximo de cobertura en kilómetros
-  - commercialName       → Nombre del negocio o marca (opcional)
+  - commercialName       → Nombre del negocio o marca personal (opcional)
   - customServiceName    → Nombre personalizado del servicio
-                           Ej: "Plomería Express", "Electricista 24h"
+                           (ej: "Plomería Express", "Electricista 24h")
   - servicePhoto         → URL pública de la foto del servicio en Cloudinary
   - servicePhotoPublicId → public_id de Cloudinary para reemplazar o eliminar
   - createdAt            → Fecha de creación
@@ -336,12 +325,12 @@ Relaciones:
 ────────────────────────────────────────
 PROVIDERDOCUMENT
 ────────────────────────────────────────
-Propósito: Documento o certificado subido por el provider para verificar
-una especialidad. Cada documento se guarda por separado para poder
-eliminarlo o reemplazarlo individualmente sin afectar los demás.
+Propósito: Documento o certificado subido para verificar una especialidad.
+Cada documento se guarda por separado para eliminarlo o reemplazarlo
+individualmente sin afectar los demás.
 
 Campos:
-  - providerServiceId → Especialidad a la que pertenece
+  - providerServiceId → FK a ProviderService
   - url               → URL pública del documento en Cloudinary
   - publicId          → public_id de Cloudinary para eliminar o reemplazar
   - name              → Nombre descriptivo (ej: "Certificado de electricista")
@@ -349,87 +338,89 @@ Campos:
   - updatedAt         → Última actualización
 
 Relaciones:
-  - providerService → Pertenece a un ProviderService
+  - providerService → Pertenece a un ProviderService (N a 1)
 
 
 ────────────────────────────────────────
-CLIENTWALLET
+WALLET
 ────────────────────────────────────────
-Propósito: Billetera del cliente. Solo para pagar servicios.
+Propósito: Billetera del usuario para pagar servicios.
 Recibe recargas aprobadas por el admin.
+La moneda se fija al registrarse según el país elegido y NUNCA cambia.
 
 Campos:
-  - clientProfileId → Cliente dueño de esta billetera (FK único)
-  - currency        → Moneda fija (ej: BOB, USD, PEN).
-                      Se asigna al registrarse según countryIso y NUNCA cambia.
-  - balance         → Saldo disponible para pagar servicios
-  - createdAt       → Fecha de creación
-  - updatedAt       → Última actualización
+  - profileId → FK a Profile (1 a 1, único)
+  - currency  → Moneda fija del wallet (ej: BOB, USD, PEN).
+                Definida por Profile.countryIso al registrarse.
+  - balance   → Saldo disponible para pagar servicios
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
-  - clientProfile → Pertenece a un ClientProfile (1 a 1)
-  - recharges     → Historial de recargas
+  - profile   → Pertenece a un Profile (1 a 1)
+  - recharges → Historial de recargas de saldo (1 a N)
 
 
 ────────────────────────────────────────
 PROVIDERWALLET
 ────────────────────────────────────────
-Propósito: Billetera del provider por especialidad. Acumula ganancias
-de servicios completados. Cada especialidad tiene su propia wallet
-independiente. También financia los anuncios del provider.
+Propósito: Billetera de ganancias del provider por especialidad.
+Acumula las ganancias de servicios completados y financia los anuncios.
+Cada especialidad tiene su propia wallet independiente.
+La moneda se fija al postularse según el país elegido y NUNCA cambia.
 
 Campos:
-  - providerServiceId → Especialidad dueña de esta billetera (FK único)
-  - currency          → Moneda fija (ej: BOB, USD, PEN).
-                        Se asigna al postularse según countryIso y NUNCA cambia.
-  - balance           → Ganancias acumuladas pendientes de retiro
+  - providerServiceId → FK a ProviderService (1 a 1, único)
+  - currency          → Moneda fija del wallet (ej: BOB, USD, PEN).
+                        Definida por ProviderService.countryIso al postularse.
+  - balance           → Ganancias acumuladas disponibles para retirar
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
 Relaciones:
   - providerService → Pertenece a un ProviderService (1 a 1)
-  - withdrawals     → Historial de retiros
-  - purchases       → Historial de recargas (ProviderPurchase)
-  - anuncios        → Anuncios financiados desde esta billetera
+  - withdrawals     → Historial de retiros de ganancias (1 a N)
+  - purchases       → Historial de recargas compradas (ProviderPurchase) (1 a N)
+  - anuncios        → Anuncios financiados desde esta billetera (1 a N)
 
 
 ────────────────────────────────────────
 PACKAGE
 ────────────────────────────────────────
-Propósito: Paquetes de recarga que el admin crea. Tanto clientes como
-providers pueden comprar paquetes para recargar su wallet.
-El precio base está en USD y se convierte automáticamente a la moneda
-local del usuario usando la tabla ExchangeRate.
+Propósito: Paquetes de recarga creados por el admin. Los usuarios los
+compran para recargar su Wallet; los providers los compran para recargar
+su ProviderWallet. El precio siempre está en USD y se convierte a la
+moneda local usando ExchangeRate al acreditar el saldo.
 
 Campos:
   - name      → Nombre del paquete (ej: "Paquete Básico", "Paquete Pro")
-  - amountUsd → Precio base en USD (ej: 10.00). Se convierte al mostrar.
-  - active    → false = no aparece para los usuarios
+  - amountUsd → Precio base en USD — se convierte a moneda local al acreditar
+  - active    → false = no aparece en la app para los usuarios
   - createdAt → Fecha de creación
   - updatedAt → Última actualización
 
 Relaciones:
-  - recharges         → Recargas de clientes que usaron este paquete
-  - providerPurchases → Compras de providers que usaron este paquete
+  - recharges         → Recargas de usuarios que usaron este paquete (1 a N)
+  - providerPurchases → Compras de providers que usaron este paquete (1 a N)
 
 
 ────────────────────────────────────────
 RECHARGE
 ────────────────────────────────────────
-Propósito: Registro de cada recarga de saldo que hace un cliente.
-Flujo: Cliente elige Package → Recharge (PENDING) →
-admin aprueba → ClientWallet.balance += package.amountUsd × ExchangeRate.rate
+Propósito: Registro de cada recarga de saldo que hace un usuario.
+Flujo: usuario elige Package → Recharge (PENDING) →
+admin aprueba → Wallet.balance += package.amountUsd × ExchangeRate.rate
 
 Campos:
-  - clientWalletId → Wallet del cliente que recarga
-  - packageId      → Paquete elegido por el cliente
-  - status         → PENDING | APPROVED | REJECTED
-  - createdAt      → Fecha de creación
-  - updatedAt      → Última actualización
+  - walletId  → FK a Wallet — wallet del usuario que recarga
+  - packageId → FK a Package — paquete elegido por el usuario
+  - status    → PENDING | APPROVED | REJECTED
+  - createdAt → Fecha de creación
+  - updatedAt → Última actualización
 
 Relaciones:
-  - clientWallet → Pertenece a un ClientWallet
-  - package      → Pertenece a un Package
+  - wallet  → Pertenece a un Wallet (N a 1)
+  - package → Pertenece a un Package (N a 1)
 
 
 ────────────────────────────────────────
@@ -437,37 +428,38 @@ PROVIDERPURCHASE
 ────────────────────────────────────────
 Propósito: Registro de cada recarga de saldo que hace un provider.
 El provider compra un paquete para acreditar saldo en el ProviderWallet
-de una especialidad específica.
-Flujo: Provider elige Package → ProviderPurchase (PENDING) →
+de una especialidad específica (para financiar anuncios o uso futuro).
+Flujo: provider elige Package → ProviderPurchase (PENDING) →
 admin aprueba → ProviderWallet.balance += package.amountUsd × ExchangeRate.rate
 
 Campos:
-  - providerWalletId → Wallet del provider que recarga
-  - packageId        → Paquete elegido por el provider
+  - providerWalletId → FK a ProviderWallet — wallet de la especialidad
+  - packageId        → FK a Package — paquete elegido
   - status           → PENDING | APPROVED | REJECTED (usa RechargeStatus)
   - createdAt        → Fecha de creación
   - updatedAt        → Última actualización
 
 Nota: Usa el mismo enum RechargeStatus que Recharge porque los estados
-      son idénticos. Tabla separada porque el FK apunta a ProviderWallet
-      en lugar de ClientWallet.
+      son idénticos. Son tablas separadas porque apuntan a wallets distintos:
+        Recharge         → walletId        → Wallet
+        ProviderPurchase → providerWalletId → ProviderWallet
 
 Relaciones:
-  - providerWallet → Pertenece a un ProviderWallet
-  - package        → Pertenece a un Package
+  - providerWallet → Pertenece a un ProviderWallet (N a 1)
+  - package        → Pertenece a un Package (N a 1)
 
 
 ────────────────────────────────────────
 WITHDRAWAL
 ────────────────────────────────────────
-Propósito: Solicitud de retiro de ganancias del provider.
-El provider solicita retirar el saldo de una especialidad específica.
-Flujo: Provider solicita → Withdrawal (PENDING) →
+Propósito: Solicitud de retiro de ganancias del provider hacia su cuenta
+bancaria. El retiro se hace por especialidad (cada una tiene su wallet).
+Flujo: provider solicita → Withdrawal (PENDING) →
 admin aprueba → ProviderWallet.balance -= amount
 
 Campos:
-  - providerWalletId → Wallet de la especialidad de donde se retira
-  - amount           → Monto a retirar
+  - providerWalletId → FK a ProviderWallet — wallet de donde se retira
+  - amount           → Monto a retirar en la moneda del wallet
   - bankName         → Nombre del banco destino
   - accountNumber    → Número de cuenta bancaria destino
   - status           → PENDING | APPROVED | REJECTED
@@ -475,50 +467,48 @@ Campos:
   - updatedAt        → Última actualización
 
 Relaciones:
-  - providerWallet → Pertenece a un ProviderWallet
+  - providerWallet → Pertenece a un ProviderWallet (N a 1)
 
 
 ────────────────────────────────────────
 HISTORY
 ────────────────────────────────────────
-Propósito: Historia que el provider sube para mostrar su trabajo
-a los clientes, estilo WhatsApp/Instagram Stories.
-Expira automáticamente a las 24 horas — un cron job la elimina
-y borra el media de Cloudinary usando mediaPublicId.
+Propósito: Historia que el provider sube para mostrar su trabajo,
+estilo WhatsApp/Instagram Stories. Expira automáticamente a las 24h —
+un cron job la elimina y borra el media de Cloudinary usando mediaPublicId.
 
 Campos:
-  - providerServiceId → Especialidad que publica la historia
+  - providerServiceId → FK a ProviderService — especialidad que publicó
   - mediaUrl          → URL pública del media en Cloudinary
   - mediaPublicId     → public_id de Cloudinary para eliminar al expirar
   - mediaType         → IMAGE | VIDEO
-  - caption           → Texto opcional sobre la historia
-  - expiresAt         → createdAt + 24h — referencia para el cron job
+  - caption           → Texto opcional superpuesto sobre la historia
+  - expiresAt         → Fecha de expiración (createdAt + 24h)
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
 Relaciones:
-  - providerService → Pertenece a un ProviderService
-  - historyViews    → Registro de quién la vio (1 a N)
+  - providerService → Pertenece a un ProviderService (N a 1)
+  - historyViews    → Registro de usuarios que vieron esta historia (1 a N)
 
 
 ────────────────────────────────────────
 HISTORYVIEW
 ────────────────────────────────────────
 Propósito: Registra cada vez que un usuario ve una historia.
-Sirve para mostrar el conteo de vistas y evitar duplicados
-del mismo usuario.
+Sirve para mostrar el conteo de vistas y evitar duplicados.
 
 Campos:
-  - historyId → Historia que se vio
-  - userId    → Usuario que la vio (cualquier rol)
-  - viewedAt  → Momento en que se vio
+  - historyId → FK a History — historia que fue vista
+  - userId    → FK a User — usuario que la vio
+  - viewedAt  → Momento exacto en que se vio
 
 Restricción: @@unique([historyId, userId])
              Un usuario no puede contar como vista dos veces.
 
 Relaciones:
-  - history → Pertenece a una History
-  - user    → Pertenece a un User
+  - history → Pertenece a una History (N a 1)
+  - user    → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
@@ -526,17 +516,17 @@ POST
 ────────────────────────────────────────
 Propósito: Publicación permanente del provider, estilo Facebook.
 Puede tener texto y múltiples fotos o videos en carrusel.
-Los usuarios pueden dar like y comentar.
+Los usuarios pueden dar like, comentar y guardarla como favorita.
 
 Campos:
-  - providerServiceId → Especialidad que publica
-  - content           → Texto de la publicación (opcional)
+  - providerServiceId → FK a ProviderService — especialidad que publicó
+  - content           → Texto de la publicación (opcional si hay media)
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
 Relaciones:
-  - providerService → Pertenece a un ProviderService
-  - media           → Fotos y videos adjuntos en carrusel (1 a N)
+  - providerService → Pertenece a un ProviderService (N a 1)
+  - media           → Fotos y videos en carrusel (1 a N)
   - likes           → Likes de usuarios (1 a N)
   - comments        → Comentarios de usuarios (1 a N)
   - savedPosts      → Usuarios que guardaron esta publicación (1 a N)
@@ -545,20 +535,20 @@ Relaciones:
 ────────────────────────────────────────
 POSTMEDIA
 ────────────────────────────────────────
-Propósito: Media (foto o video) adjunta a una publicación.
-Un Post puede tener múltiples medias ordenadas como carrusel.
+Propósito: Media (foto o video) adjunta a una publicación en carrusel.
+Un Post puede tener múltiples medias ordenadas por el campo "order".
 
 Campos:
-  - postId        → Publicación a la que pertenece
-  - mediaUrl      → URL Cloudinary
-  - mediaPublicId → public_id para eliminar de Cloudinary
+  - postId        → FK a Post
+  - mediaUrl      → URL pública del media en Cloudinary
+  - mediaPublicId → public_id de Cloudinary para eliminar el media
   - mediaType     → IMAGE | VIDEO
-  - order         → Orden en el carrusel (1, 2, 3...)
+  - order         → Orden del media en el carrusel (1, 2, 3...)
   - createdAt     → Fecha de creación
   - updatedAt     → Última actualización
 
 Relaciones:
-  - post → Pertenece a un Post
+  - post → Pertenece a un Post (N a 1)
 
 
 ────────────────────────────────────────
@@ -568,15 +558,15 @@ Propósito: Like de un usuario a una publicación.
 Un usuario solo puede dar un like por publicación.
 
 Campos:
-  - postId    → Publicación que recibió el like
-  - userId    → Usuario que dio el like
+  - postId    → FK a Post — publicación que recibió el like
+  - userId    → FK a User — usuario que dio el like
   - createdAt → Fecha del like
 
 Restricción: @@unique([postId, userId])
 
 Relaciones:
-  - post → Pertenece a un Post
-  - user → Pertenece a un User
+  - post → Pertenece a un Post (N a 1)
+  - user → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
@@ -585,84 +575,80 @@ POSTCOMMENT
 Propósito: Comentario de un usuario en una publicación.
 
 Campos:
-  - postId    → Publicación comentada
-  - userId    → Usuario que comentó
+  - postId    → FK a Post — publicación comentada
+  - userId    → FK a User — usuario que comentó
   - content   → Texto del comentario
   - createdAt → Fecha de creación
   - updatedAt → Última actualización
 
 Relaciones:
-  - post → Pertenece a un Post
-  - user → Pertenece a un User
+  - post → Pertenece a un Post (N a 1)
+  - user → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
 SAVEDPOST
 ────────────────────────────────────────
-Propósito: Tabla intermedia para que un usuario guarde publicaciones
-como favoritas, estilo "Guardar" de Instagram.
-Un usuario no puede guardar la misma publicación dos veces.
+Propósito: Publicación guardada como favorita, estilo "Guardar" de
+Instagram. Un usuario no puede guardar la misma publicación dos veces.
 
 Campos:
-  - userId    → Usuario que guardó
-  - postId    → Publicación guardada
+  - userId    → FK a User — usuario que guardó
+  - postId    → FK a Post — publicación guardada
   - createdAt → Fecha en que se guardó
 
 Restricción: @@unique([userId, postId])
 
 Relaciones:
-  - user → Pertenece a un User
-  - post → Pertenece a un Post
+  - user → Pertenece a un User (N a 1)
+  - post → Pertenece a un Post (N a 1)
 
 
 ────────────────────────────────────────
 SAVEDPROVIDER
 ────────────────────────────────────────
-Propósito: Tabla intermedia para que un usuario guarde especialidades
-de providers como favoritas, estilo "contacto favorito" de Uber.
-Un usuario no puede guardar la misma especialidad dos veces.
-
-Nota: Apunta a User (no ClientProfile) para que cualquier rol
-      pueda guardar providers a futuro.
+Propósito: Especialidad de provider guardada como favorita,
+estilo "contacto favorito" de Uber. Apunta a User (no Profile)
+para que cualquier rol pueda guardar favoritos a futuro.
 
 Campos:
-  - clientId          → Usuario que guardó
-  - providerServiceId → Especialidad guardada
+  - userId            → FK a User — usuario que guardó
+  - providerServiceId → FK a ProviderService — especialidad guardada
   - createdAt         → Fecha en que se guardó
   - updatedAt         → Última actualización
 
-Restricción: @@unique([clientId, providerServiceId])
+Restricción: @@unique([userId, providerServiceId])
 
 Relaciones:
-  - client          → Pertenece a un User
-  - providerService → Pertenece a un ProviderService
+  - user            → Pertenece a un User (N a 1)
+  - providerService → Pertenece a un ProviderService (N a 1)
 
 
 ────────────────────────────────────────
 REEL
 ────────────────────────────────────────
-Propósito: Video corto vertical del provider para mostrar su trabajo,
-estilo TikTok / Instagram Reels. Independiente de Post —
-tiene su propia sección en la app con thumbnail y contador de vistas.
+Propósito: Video corto vertical del provider, estilo TikTok / Instagram
+Reels. Independiente de Post — tiene su propia sección en la app con
+thumbnail y contador de vistas.
+
+Diferencia con Post:
+  Post → publicación permanente, texto + carrusel de fotos/videos
+  Reel → video corto vertical, thumbnail, sección propia, contador de vistas
 
 Campos:
-  - providerServiceId → Especialidad que sube el reel
-  - videoUrl          → URL Cloudinary del video
-  - videoPublicId     → public_id para eliminar de Cloudinary
-  - thumbnailUrl      → URL Cloudinary del thumbnail (primer frame)
-  - thumbnailPublicId → public_id del thumbnail para eliminar
+  - providerServiceId → FK a ProviderService — especialidad que publicó
+  - videoUrl          → URL pública del video en Cloudinary
+  - videoPublicId     → public_id de Cloudinary para eliminar el video
+  - thumbnailUrl      → URL pública del thumbnail (primer frame) en Cloudinary
+  - thumbnailPublicId → public_id de Cloudinary para eliminar el thumbnail
   - caption           → Texto opcional sobre el reel
-  - duration          → Duración en segundos (máx recomendado: 60)
-  - views             → Contador de reproducciones
+  - duration          → Duración del video en segundos (máx recomendado: 60)
+  - views             → Contador de reproducciones acumuladas
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
-Diferencia con Post:
-  Post  → publicación permanente, texto + carrusel de fotos/videos
-  Reel  → video corto vertical con thumbnail, sección propia, contador de vistas
-
 Relaciones:
-  - providerService → Pertenece a un ProviderService
+  - providerService → Pertenece a un ProviderService (N a 1)
   - likes           → Likes de usuarios (1 a N)
   - comments        → Comentarios de usuarios (1 a N)
 
@@ -674,15 +660,15 @@ Propósito: Like de un usuario a un reel.
 Un usuario solo puede dar un like por reel.
 
 Campos:
-  - reelId    → Reel que recibió el like
-  - userId    → Usuario que dio el like
+  - reelId    → FK a Reel — reel que recibió el like
+  - userId    → FK a User — usuario que dio el like
   - createdAt → Fecha del like
 
 Restricción: @@unique([reelId, userId])
 
 Relaciones:
-  - reel → Pertenece a un Reel
-  - user → Pertenece a un User
+  - reel → Pertenece a un Reel (N a 1)
+  - user → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
@@ -691,124 +677,120 @@ REELCOMMENT
 Propósito: Comentario de un usuario en un reel.
 
 Campos:
-  - reelId    → Reel comentado
-  - userId    → Usuario que comentó
+  - reelId    → FK a Reel — reel comentado
+  - userId    → FK a User — usuario que comentó
   - content   → Texto del comentario
   - createdAt → Fecha de creación
   - updatedAt → Última actualización
 
 Relaciones:
-  - reel → Pertenece a un Reel
-  - user → Pertenece a un User
+  - reel → Pertenece a un Reel (N a 1)
+  - user → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
 ANUNCIO
 ────────────────────────────────────────
 Propósito: Anuncio pagado por el provider para destacar su especialidad
-en los resultados de búsqueda. Funciona como prepago — el saldo se
-descuenta del ProviderWallet al crear el anuncio.
+en los resultados de búsqueda. Modelo prepago — el saldo se descuenta
+del ProviderWallet al crear el anuncio.
+El cron job lo desactiva automáticamente al llegar a endDate.
 
 Flujo:
-  Provider crea anuncio con budget → ProviderWallet.balance -= budget
-  → Anuncio activo hasta endDate
-  → Cron job desactiva el anuncio al llegar endDate (active = false)
+  Provider crea anuncio → ProviderWallet.balance -= budget
+  → Anuncio activo desde startDate hasta endDate
+  → Cron job: active = false al llegar endDate
   → Providers con anuncio activo aparecen primero en búsquedas
 
 Campos:
-  - providerWalletId  → Wallet de donde se descontó el saldo
-  - providerServiceId → Especialidad que se promociona
+  - providerWalletId  → FK a ProviderWallet — rastro financiero
+                        (de qué wallet salió el dinero)
+  - providerServiceId → FK a ProviderService — rastro comercial
+                        (qué especialidad se está promocionando)
   - title             → Título del anuncio
   - description       → Texto descriptivo (opcional)
   - mediaUrl          → URL Cloudinary del media del anuncio (opcional)
-  - mediaPublicId     → public_id para eliminar de Cloudinary
-  - mediaType         → IMAGE | VIDEO (opcional si no hay media)
-  - budget            → Saldo descontado al crear
-  - startDate         → Fecha de inicio
-  - endDate           → Fecha de fin (cron job desactiva al llegar)
+  - mediaPublicId     → public_id de Cloudinary para eliminar el media
+  - mediaType         → IMAGE | VIDEO (null si no hay media)
+  - budget            → Saldo descontado del ProviderWallet al crear
+  - startDate         → Fecha y hora de inicio del anuncio
+  - endDate           → Fecha y hora de fin — cron job desactiva al llegar
   - active            → false = expirado o desactivado manualmente
-  - impressions       → Veces que se mostró en búsquedas
-  - clicks            → Veces que tocaron el anuncio
+  - impressions       → Veces que se mostró en resultados de búsqueda
+  - clicks            → Veces que un usuario tocó el anuncio
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
-Nota: providerWalletId y providerServiceId son del mismo provider
-      pero cumplen roles distintos:
-        providerWalletId  → rastro financiero (de dónde salió el dinero)
-        providerServiceId → rastro comercial (qué se promociona)
+Nota: providerWalletId y providerServiceId apuntan al mismo usuario
+      pero cumplen roles distintos y son necesarios por auditoría.
 
 Relaciones:
-  - providerWallet  → Pertenece a un ProviderWallet (origen del pago)
-  - providerService → Pertenece a un ProviderService (lo que se promociona)
+  - providerWallet  → Pertenece a un ProviderWallet — origen del pago (N a 1)
+  - providerService → Pertenece a un ProviderService — lo que se promociona (N a 1)
 
 
 ────────────────────────────────────────
 SERVICE
 ────────────────────────────────────────
-Propósito: Núcleo del negocio. Representa un servicio solicitado
-por un cliente. Conecta al cliente con un ProviderService específico.
-
-Flujo de estados:
-  SEARCHING   → Cliente solicita, sistema busca provider disponible
-  ASSIGNED    → Provider aceptó el trabajo
-  ON_WAY      → Provider va en camino al domicilio
-  IN_PROGRESS → Provider está realizando el trabajo
-  COMPLETED   → Trabajo finalizado
-  CANCELLED   → Servicio cancelado
+Propósito: Núcleo del negocio. Representa un trabajo solicitado por
+un usuario a un provider. Conecta al usuario con una especialidad.
+Ciclo de vida: SEARCHING → ASSIGNED → ON_WAY → IN_PROGRESS → COMPLETED | CANCELLED
 
 Campos:
-  - clientId          → Cliente que solicitó
-  - providerServiceId → Especialidad asignada (null hasta que se asigne)
-  - serviceTypeId     → Tipo de servicio solicitado
-  - description       → Descripción del problema o trabajo
-  - address           → Dirección donde se realiza
-  - latitude          → Coordenadas para el mapa
-  - longitude         → Coordenadas para el mapa
+  - clientId          → FK a User — usuario que solicitó el servicio
+  - providerServiceId → FK a ProviderService — especialidad asignada
+                        (null mientras está en estado SEARCHING)
+  - serviceTypeId     → FK a ServiceType — tipo de servicio solicitado
+  - description       → Descripción del problema o trabajo a realizar
+  - address           → Dirección física donde se realiza el servicio
+  - latitude          → Latitud para mostrar en el mapa
+  - longitude         → Longitud para mostrar en el mapa
   - status            → Estado actual del servicio
-  - price             → Precio acordado (null en estado SEARCHING)
-  - commission        → Comisión cobrada (price × SystemConfig.commissionRate)
+  - price             → Precio acordado entre usuario y provider
+                        (null en estado SEARCHING — aún no se acordó)
+  - commission        → Comisión cobrada por la plataforma
+                        (price × SystemConfig.commissionRate, null en SEARCHING)
   - createdAt         → Fecha de creación
   - updatedAt         → Última actualización
 
 Relaciones:
-  - client          → Pertenece a un User (cliente)
-  - providerService → Pertenece a un ProviderService (opcional hasta asignación)
-  - serviceType     → Pertenece a un ServiceType
-  - messages        → Chat del servicio (1 a N)
-  - calls           → Llamadas realizadas (1 a N)
-  - rating          → Calificación del cliente al finalizar (1 a 1)
+  - client          → Pertenece a un User — quien solicitó (N a 1)
+  - providerService → Pertenece a un ProviderService — quien atiende (N a 1, nullable)
+  - serviceType     → Pertenece a un ServiceType (N a 1)
+  - messages        → Chat entre usuario y provider (1 a N)
+  - calls           → Llamadas de voz o video durante el servicio (1 a N)
+  - rating          → Calificación del usuario al finalizar (1 a 1, único)
 
 
 ────────────────────────────────────────
 MESSAGE
 ────────────────────────────────────────
-Propósito: Mensajes del chat dentro de un servicio activo.
-Cliente y provider se comunican durante el servicio.
+Propósito: Mensaje del chat dentro de un servicio activo.
+Usuario y provider se comunican a través de texto, imágenes o audios.
 
 Campos:
-  - serviceId → Servicio al que pertenece
-  - senderId  → Usuario que envió el mensaje
-  - content   → Texto o URL del archivo (imagen/audio)
+  - serviceId → FK a Service — servicio al que pertenece
+  - senderId  → FK a User — usuario que envió el mensaje
+  - content   → Texto del mensaje o URL del archivo en Cloudinary
   - type      → TEXT | IMAGE | AUDIO
-  - read      → true = el receptor ya lo leyó
+  - read      → true = el receptor ya leyó el mensaje
   - createdAt → Fecha de creación
   - updatedAt → Última actualización
 
 Relaciones:
-  - service → Pertenece a un Service
-  - sender  → Pertenece a un User
+  - service → Pertenece a un Service (N a 1)
+  - sender  → Pertenece a un User (N a 1)
 
 
 ────────────────────────────────────────
 CALL
 ────────────────────────────────────────
-Propósito: Registro de llamadas de voz o video entre cliente
-y provider durante un servicio.
+Propósito: Registro de llamadas de voz o video durante un servicio.
 
 Campos:
-  - serviceId  → Servicio en el que ocurrió la llamada
-  - callerId   → Usuario que inició la llamada
-  - receiverId → Usuario que recibe la llamada
+  - serviceId  → FK a Service — servicio en el que ocurrió la llamada
+  - callerId   → FK a User — usuario que inició la llamada
+  - receiverId → FK a User — usuario que recibió la llamada
   - type       → VOICE | VIDEO
   - status     → INITIATED | ACCEPTED | REJECTED | ENDED | MISSED
   - startedAt  → Momento en que el receptor aceptó
@@ -818,21 +800,21 @@ Campos:
   - updatedAt  → Última actualización
 
 Relaciones:
-  - service → Pertenece a un Service
+  - service → Pertenece a un Service (N a 1)
 
 
 ────────────────────────────────────────
 RATING
 ────────────────────────────────────────
-Propósito: Calificación que el cliente da al provider después
-de completar un servicio. Solo una calificación por servicio.
-Al crearse recalcula ProviderService.rating automáticamente.
+Propósito: Calificación del usuario al provider después de completar
+un servicio. Solo una calificación por servicio.
+Al crearse recalcula automáticamente ProviderService.rating.
 
 Fórmula: rating = (rating × totalRatings + score) / (totalRatings + 1)
 
 Campos:
-  - serviceId → Servicio calificado (único — un solo Rating por servicio)
-  - clientId  → Cliente que calificó
+  - serviceId → FK a Service (único — un solo Rating por servicio)
+  - clientId  → FK a User — usuario que calificó
   - score     → Puntuación del 1 al 5
   - comment   → Comentario opcional
   - createdAt → Fecha de creación
@@ -840,7 +822,7 @@ Campos:
 
 Relaciones:
   - service → Pertenece a un Service (1 a 1)
-  - client  → Pertenece a un User (cliente)
+  - client  → Pertenece a un User (N a 1)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -848,8 +830,7 @@ Relaciones:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ── USUARIO ──────────────────────────────────────────────────
-User (1) ──────── (1) ClientProfile
-User (1) ──────── (1) ProviderProfile
+User (1) ──────── (1) Profile
 User (1) ──────── (N) ProviderService      [una por especialidad]
 User (1) ──────── (N) Message              [mensajes enviados]
 User (1) ──────── (N) Service              [servicios solicitados]
@@ -863,13 +844,12 @@ User (1) ──────── (N) ReelLike             [likes en reels]
 User (1) ──────── (N) ReelComment          [comentarios en reels]
 
 ── PAÍS ─────────────────────────────────────────────────────
-Country (1) ──── (N) ClientProfile         [país del cliente]
-Country (1) ──── (N) ProviderProfile       [país del provider]
+Country (1) ──── (N) Profile               [país del usuario]
 Country (1) ──── (N) ProviderService       [país de la especialidad]
 
-── PERFILES ─────────────────────────────────────────────────
-ClientProfile   (1) ── (1) ClientWallet
-ClientProfile   (1) ── (N) Contact
+── PERFIL ───────────────────────────────────────────────────
+Profile (1) ── (1) Wallet
+Profile (1) ── (N) Contact
 
 ── ESPECIALIDAD ─────────────────────────────────────────────
 ProviderService (1) ── (1) ProviderWallet
@@ -895,7 +875,7 @@ Reel     (1) ── (N) ReelLike
 Reel     (1) ── (N) ReelComment
 
 ── FINANZAS ─────────────────────────────────────────────────
-ClientWallet   (1) ── (N) Recharge
+Wallet         (1) ── (N) Recharge
 ProviderWallet (1) ── (N) Withdrawal
 ProviderWallet (1) ── (N) ProviderPurchase
 ProviderWallet (1) ── (N) Anuncio
@@ -913,54 +893,47 @@ Service     (1) ── (1) Rating
 4. FLUJOS PRINCIPALES DEL NEGOCIO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-REGISTRO CLIENTE (2 pasos):
+REGISTRO (2 pasos, cualquier persona):
   Paso 1 → POST /auth/register
-    User (CLIENT) + username + countryIso
-    → ClientProfile (countryIso, firstName: null, lastName: null)
-    → ClientWallet (currency = Country.currency, balance: 0)
+    User (email O phone) + username + countryIso
+    → Profile (countryIso, firstName: null, lastName: null)
+    → Wallet (currency = Country.currency, balance: 0)
   Paso 2 → PUT /profile/complete
-    → ClientProfile.firstName, lastName
-    → Contact[] (teléfonos opcionales, máx 3)
+    → Profile.firstName, lastName
+    → Contact[] (teléfonos de contacto opcionales, máx 3)
 
-REGISTRO PROVIDER (2 pasos):
-  Paso 1 → POST /auth/register/technician
-    User (PROVIDER) + username + countryIso
-    → ProviderProfile (countryIso, firstName: null, lastName: null)
-    (sin wallet — se crea al postularse a especialidad)
-  Paso 2 → PUT /profile/complete
-    → ProviderProfile.firstName, lastName
-
-REGISTRO CON GOOGLE (flujo unificado):
+REGISTRO CON GOOGLE (un solo flujo):
   POST /auth/google → si email existe: login directo
-                   → si email nuevo: devuelve tempToken + datos de Google
-  POST /auth/google/complete → username + countryIso + role
-    → igual que registro normal pero firstName/lastName vienen de Google
-    → no requiere Paso 2
+                   → si es nuevo: devuelve tempToken + datos de Google
+  POST /auth/google/complete → username + countryIso
+    → crea User + Profile + Wallet
+    → firstName/lastName vienen de Google, no requiere Paso 2
 
-LOGIN (3 opciones):
+LOGIN (4 opciones):
   1. email + contraseña    → POST /auth/login
   2. username + contraseña → POST /auth/login
-  3. Google OAuth          → POST /auth/google
-  → Actualiza lastLoginAt en ClientProfile o ProviderProfile
+  3. teléfono + contraseña → POST /auth/login  (User.phone)
+  4. Google OAuth          → POST /auth/google
+  → Actualiza Profile.lastLoginAt
 
-POSTULACIÓN A ESPECIALIDAD:
-  Provider elige ServiceType + countryIso
+POSTULACIÓN A ESPECIALIDAD (cualquier usuario):
+  Usuario elige ServiceType + countryIso
   → ProviderService (PENDING)
   → ProviderWallet (currency = Country.currency, balance: 0)
-  → ProviderServiceProfile (bio, experience, etc.)
-  → ProviderDocument[] (certificados)
-  → ProviderContact[] (teléfonos de esta especialidad)
+  → ProviderServiceProfile (bio, experience, etc.) — opcional
+  → ProviderDocument[] (certificados) — opcional
+  → ProviderContact[] (teléfonos de la especialidad) — opcional
   Admin aprueba → ProviderService.status = APPROVED
 
-RECARGA DE SALDO (CLIENTE):
-  GET /packages → cliente elige paquete
+RECARGA DE SALDO (USUARIO):
+  GET /packages → usuario elige paquete
   POST /wallet/recharge → Recharge (PENDING)
   Admin aprueba:
     tasa = ExchangeRate WHERE fromCurrency='USD' AND toCurrency=wallet.currency
-    ClientWallet.balance += package.amountUsd × tasa
+    Wallet.balance += package.amountUsd × tasa
   Ej: 10 USD × 6.96 = 69.60 BOB
 
-RECARGA DE SALDO (PROVIDER):
+RECARGA DE SALDO (PROVIDER — para financiar anuncios):
   GET /packages → provider elige paquete + especialidad
   POST /wallet/purchase → ProviderPurchase (PENDING)
   Admin aprueba:
@@ -968,7 +941,7 @@ RECARGA DE SALDO (PROVIDER):
     ProviderWallet.balance += package.amountUsd × tasa
 
 SOLICITUD DE SERVICIO:
-  Cliente crea Service (SEARCHING)
+  Usuario crea Service (SEARCHING)
   Sistema busca ProviderService donde:
     status = APPROVED AND available = true
     serviceTypeId = el solicitado
@@ -977,12 +950,12 @@ SOLICITUD DE SERVICIO:
   Provider acepta → ASSIGNED → ON_WAY → IN_PROGRESS → COMPLETED
 
 PAGO AL COMPLETAR:
-  ClientWallet.balance -= price
+  Wallet.balance         -= price
   ProviderWallet.balance += (price - commission)
   commission = price × SystemConfig.commissionRate
 
 CALIFICACIÓN:
-  Service COMPLETED → Cliente crea Rating (score 1-5)
+  Service COMPLETED → Usuario crea Rating (score 1-5)
   ProviderService.rating = (rating × totalRatings + score) / (totalRatings + 1)
   ProviderService.totalRatings += 1
 
@@ -992,14 +965,14 @@ RETIRO DE GANANCIAS:
 
 CONTENIDO DEL PROVIDER:
   Historia → expira en 24h → cron job la elimina + borra media de Cloudinary
-  Post     → permanente, con carrusel de fotos/videos, likes y comentarios
-  Reel     → video corto vertical, thumbnail, contador de vistas, likes y comentarios
+  Post     → permanente, texto + carrusel, likes, comentarios, guardado
+  Reel     → video corto vertical, thumbnail, vistas, likes, comentarios
 
 ANUNCIO PAGADO:
-  Provider crea Anuncio con budget → ProviderWallet.balance -= budget
-  Anuncio activo hasta endDate → aparece destacado en búsquedas
-  Cron job desactiva al llegar endDate (active = false)
-  Métricas: impressions (veces mostrado) + clicks (veces tocado)
+  Provider crea Anuncio → ProviderWallet.balance -= budget
+  Activo hasta endDate → aparece destacado en búsquedas
+  Cron job: active = false al llegar endDate
+  Métricas: impressions + clicks
 
 RECUPERAR CONTRASEÑA:
   Usuario ingresa email → código de 6 dígitos al correo (válido 15 min)
@@ -1011,46 +984,49 @@ RECUPERAR CONTRASEÑA:
 5. DECISIONES DE DISEÑO IMPORTANTES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. MONEDA FIJA EN WALLETS
-   ClientWallet.currency y ProviderWallet.currency se asignan
-   al momento de crear el wallet y NUNCA cambian.
-   Esto evita inconsistencias si el admin modifica Country.currency
-   en el futuro. El wallet siempre refleja la moneda original.
+1. UN SOLO PERFIL SIN ROLES FIJOS (FILOSOFÍA FACEBOOK)
+   No hay ClientProfile + ProviderProfile separados.
+   Existe un solo Profile por usuario. Cualquier usuario puede
+   postularse a ser provider sin cambiar de cuenta ni de rol.
+   El "rol de provider" lo define tener un ProviderService aprobado.
 
-2. PAQUETES EN USD CON CONVERSIÓN AUTOMÁTICA
+2. DOS TIPOS DE TELÉFONO CON PROPÓSITOS DISTINTOS
+   User.phone    → credencial de login, único global, máx 1
+   Contact.phone → número de contacto visible en el perfil, hasta 3
+   El frontend usa Country.dialCode para armar User.phone.
+
+3. MONEDA FIJA EN WALLETS
+   Wallet.currency y ProviderWallet.currency se asignan al crear
+   el wallet y NUNCA cambian. Esto evita inconsistencias si el admin
+   modifica Country.currency en el futuro.
+
+4. PAQUETES EN USD CON CONVERSIÓN AUTOMÁTICA
    Package.amountUsd siempre en USD.
    ExchangeRate convierte al momento de acreditar.
    Un solo catálogo de paquetes sirve para todos los países.
 
-3. REGISTRO EN DOS PASOS
+5. REGISTRO EN DOS PASOS
    Paso 1 crea credenciales + país + wallet (mínimo para operar).
-   Paso 2 completa nombre, apellido y teléfonos.
-   Esto permite que el usuario empiece a explorar la app
-   antes de completar su perfil.
+   Paso 2 completa nombre, apellido y teléfonos de contacto.
+   Permite explorar la app antes de completar el perfil.
 
-4. CONTENIDO LIGADO A ESPECIALIDAD, NO AL PERFIL
-   History, Post, Reel y Anuncio apuntan a ProviderService,
-   no a ProviderProfile. Esto permite que cada especialidad
-   tenga su propio portafolio de contenido independiente.
+6. CONTENIDO LIGADO A ESPECIALIDAD, NO AL PERFIL
+   History, Post, Reel y Anuncio apuntan a ProviderService.
+   Cada especialidad tiene su propio portafolio independiente.
    Ej: Juan el Electricista y Juan el Gasfitero tienen
-   historias, posts y reels separados.
+   historias, posts y reels completamente separados.
 
-5. SAVEDPROVIDER Y SAVEDPOST USAN USER (NO CLIENTPROFILE)
-   Apuntan a User para que cualquier rol pueda guardar
-   favoritos en el futuro, no solo clientes.
-
-6. PRICE Y COMMISSION SON NULLABLE EN SERVICE
+7. PRICE Y COMMISSION SON NULLABLE EN SERVICE
    Ambos son Float? porque en SEARCHING el precio aún
-   no se ha acordado entre cliente y provider.
-
-7. WALLETS SEPARADOS POR ROL
-   ClientWallet  → pertenece a ClientProfile
-   ProviderWallet → pertenece a ProviderService (uno por especialidad)
-   No hay tabla Wallet genérica — evita nulls innecesarios.
+   no se ha acordado entre usuario y provider.
 
 8. ANUNCIO TIENE DOS FKs AL MISMO PROVIDER
    providerWalletId  → rastro financiero (de dónde salió el dinero)
    providerServiceId → rastro comercial (qué especialidad se promociona)
    Ambas son necesarias por semántica y auditoría.
+
+9. SAVEDPROVIDER Y SAVEDPOST USAN USER (NO PROFILE)
+   Apuntan directamente a User para que cualquier usuario pueda
+   guardar favoritos independientemente de su estado como provider.
 
 ================================================================

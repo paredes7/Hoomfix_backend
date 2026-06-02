@@ -1,15 +1,9 @@
-import {
-  Body,
-  Controller,
-  Put,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Put, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ProfileService } from './profile.service';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
-import { Role } from '@prisma/client';
 
 @ApiTags('Profile')
 @Controller('profile')
@@ -19,9 +13,9 @@ export class ProfileController {
   @Put('complete')
   @UseGuards(JwtAuthGuard)
   async completeProfile(
-    @CurrentUser() user: { userId: string; role: Role },
+    @CurrentUser() user: { userId: string },
     @Body() dto: CompleteProfileDto,
   ) {
-    return this.profileService.completeProfile(user.userId, user.role, dto);
+    return this.profileService.completeProfile(user.userId, dto);
   }
 }

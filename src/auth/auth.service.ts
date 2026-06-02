@@ -3,9 +3,16 @@ import {
   ConflictException,
   Inject,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+
+interface GoogleTokenInfo {
+  sub: string;
+  email: string;
+  email_verified: string;
+  given_name?: string;
+  family_name?: string;
+}
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -15,10 +22,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { RegisterTechnicianDto } from './dto/register-technician.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -32,71 +37,95 @@ export class AuthService {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  // ─── GENERADOR DE USERNAME ───────────────────────────────────────────────────
+  // ─── HELPERS DE USERNAME ─────────────────────────────────────────────────────
 
-  private async generateUsername(email: string): Promise<string> {
-    const base = email
+  private buildUsernameBase(source: string): string {
+    return source
       .split('@')[0]
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '');
+  }
 
+  private async generateUsername(emailOrPhone: string): Promise<string> {
+    const base = this.buildUsernameBase(emailOrPhone);
     let username = base;
     let counter = 1;
-
     while (await this.prisma.user.findUnique({ where: { username } })) {
       username = `${base}${counter}`;
       counter++;
     }
-
     return username;
   }
 
   private async generateUsernameSuggestions(base: string): Promise<string[]> {
-    const candidates = [
-      `${base}1`,
-      `${base}2`,
-      `${base}_ok`,
-    ];
+    const candidates = [`${base}1`, `${base}2`, `${base}_ok`];
     const results: string[] = [];
     for (const candidate of candidates) {
-      const exists = await this.prisma.user.findUnique({ where: { username: candidate } });
+      const exists = await this.prisma.user.findUnique({
+        where: { username: candidate },
+      });
       if (!exists) results.push(candidate);
     }
     return results;
   }
 
-  // ─── REGISTRO CLIENTE ────────────────────────────────────────────────────────
+  // ─── REGISTRO ────────────────────────────────────────────────────────────────
 
-  async registerClient(dto: RegisterDto) {
-    const email = dto.email.trim().toLowerCase();
-    const username = dto.username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const countryIso = dto.countryIso.trim().toUpperCase();
-
-    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
-    if (existingEmail) throw new ConflictException('El email ya está registrado');
-
-    const existingUsername = await this.prisma.user.findUnique({ where: { username } });
-    if (existingUsername) {
-      const suggestions = await this.generateUsernameSuggestions(username);
-      throw new ConflictException({ message: 'El username ya está en uso', suggestions });
+  async register(dto: RegisterDto) {
+    if (!dto.email && !dto.phone) {
+      throw new BadRequestException(
+        'Debes proporcionar un email o un teléfono',
+      );
     }
 
-    const country = await this.prisma.country.findUnique({ where: { iso: countryIso } });
-    if (!country) throw new BadRequestException('El país seleccionado no existe');
+    const email = dto.email?.trim().toLowerCase();
+    const phone = dto.phone?.trim();
+    const username = dto.username
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+    const countryIso = dto.countryIso.trim().toUpperCase();
+
+    if (email) {
+      const exists = await this.prisma.user.findUnique({ where: { email } });
+      if (exists) throw new ConflictException('El email ya está registrado');
+    }
+
+    if (phone) {
+      const exists = await this.prisma.user.findUnique({ where: { phone } });
+      if (exists) throw new ConflictException('El teléfono ya está registrado');
+    }
+
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username },
+    });
+    if (existingUsername) {
+      const suggestions = await this.generateUsernameSuggestions(username);
+      throw new ConflictException({
+        message: 'El username ya está en uso',
+        suggestions,
+      });
+    }
+
+    const country = await this.prisma.country.findUnique({
+      where: { iso: countryIso },
+    });
+    if (!country)
+      throw new BadRequestException('El país seleccionado no existe');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const user = await this.prisma.$transaction(async (tx) => {
       return tx.user.create({
         data: {
-          email,
+          email: email ?? null,
+          phone: phone ?? null,
           username,
           password: hashedPassword,
-          role: Role.CLIENT,
-          clientProfile: {
+          profile: {
             create: {
               countryIso,
-              clientWallet: {
+              wallet: {
                 create: {
                   currency: country.currency,
                   balance: 0,
@@ -106,50 +135,10 @@ export class AuthService {
           },
         },
         include: {
-          clientProfile: {
-            include: { clientWallet: true },
+          profile: {
+            include: { wallet: true },
           },
         },
-      });
-    });
-
-    const { password: _, ...userWithoutPass } = user;
-    return this.buildTokenResponse(userWithoutPass);
-  }
-
-  // ─── REGISTRO PROVIDER ───────────────────────────────────────────────────────
-
-  async registerTechnician(dto: RegisterTechnicianDto) {
-    const email = dto.email.trim().toLowerCase();
-    const username = dto.username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const countryIso = dto.countryIso.trim().toUpperCase();
-
-    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
-    if (existingEmail) throw new ConflictException('El email ya está registrado');
-
-    const existingUsername = await this.prisma.user.findUnique({ where: { username } });
-    if (existingUsername) {
-      const suggestions = await this.generateUsernameSuggestions(username);
-      throw new ConflictException({ message: 'El username ya está en uso', suggestions });
-    }
-
-    const country = await this.prisma.country.findUnique({ where: { iso: countryIso } });
-    if (!country) throw new BadRequestException('El país seleccionado no existe');
-
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-    const user = await this.prisma.$transaction(async (tx) => {
-      return tx.user.create({
-        data: {
-          email,
-          username,
-          password: hashedPassword,
-          role: Role.PROVIDER,
-          providerProfile: {
-            create: { countryIso },
-          },
-        },
-        include: { providerProfile: true },
       });
     });
 
@@ -167,9 +156,12 @@ export class AuthService {
         OR: [
           { email: identifier },
           { username: identifier },
+          { phone: identifier },
         ],
       },
-      include: { clientProfile: true, providerProfile: true },
+      include: {
+        profile: { include: { wallet: true } },
+      },
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.password))) {
@@ -180,20 +172,13 @@ export class AuthService {
       throw new UnauthorizedException('Tu cuenta está suspendida');
     }
 
-    const now = new Date();
-
-    if (user.clientProfile) {
-      user.clientProfile.lastLoginAt = now;
-      await this.prisma.clientProfile.update({
+    if (user.profile) {
+      const now = new Date();
+      await this.prisma.profile.update({
         where: { userId: user.id },
         data: { lastLoginAt: now },
       });
-    } else if (user.providerProfile) {
-      user.providerProfile.lastLoginAt = now;
-      await this.prisma.providerProfile.update({
-        where: { userId: user.id },
-        data: { lastLoginAt: now },
-      });
+      user.profile.lastLoginAt = now;
     }
 
     const { password: _, ...userWithoutPass } = user;
@@ -206,28 +191,30 @@ export class AuthService {
     const tokenInfo = await this.verifyGoogleIdToken(idToken);
 
     const email = tokenInfo.email?.trim().toLowerCase();
-    if (!email) throw new BadRequestException('La cuenta de Google no incluye email');
-    if (tokenInfo.email_verified !== 'true') throw new UnauthorizedException('Debes verificar tu email en Google');
+    if (!email)
+      throw new BadRequestException('La cuenta de Google no incluye email');
+    if (tokenInfo.email_verified !== 'true')
+      throw new UnauthorizedException('Debes verificar tu email en Google');
 
     const user = await this.prisma.user.findUnique({
       where: { email },
       include: {
-        clientProfile: { include: { clientWallet: true } },
-        providerProfile: true,
+        profile: { include: { wallet: true } },
       },
     });
 
     // Usuario ya registrado → login directo
     if (user) {
-      if (!user.isActive) throw new UnauthorizedException('Tu cuenta está suspendida');
+      if (!user.isActive)
+        throw new UnauthorizedException('Tu cuenta está suspendida');
       const { password: _, ...userWithoutPass } = user;
       return this.buildTokenResponse(userWithoutPass);
     }
 
     // Usuario nuevo → devuelve tempToken para que elija username y país
     const firstName: string = tokenInfo.given_name ?? '';
-    const lastName: string  = tokenInfo.family_name ?? '';
-    const suggestedUsername  = await this.generateUsername(email);
+    const lastName: string = tokenInfo.family_name ?? '';
+    const suggestedUsername = await this.generateUsername(email);
 
     const tempToken = this.jwtService.sign(
       { googleEmail: email, firstName, lastName, type: 'google_pending' },
@@ -237,7 +224,7 @@ export class AuthService {
     return {
       needsRegistration: true,
       tempToken,
-      googleEmail:       email,
+      googleEmail: email,
       firstName,
       lastName,
       suggestedUsername,
@@ -245,75 +232,69 @@ export class AuthService {
   }
 
   async completeGoogleRegistration(
-    tempPayload: { googleEmail: string; firstName: string; lastName: string; type: string },
+    tempPayload: {
+      googleEmail: string;
+      firstName: string;
+      lastName: string;
+      type: string;
+    },
     username: string,
     countryIso: string,
-    role: 'CLIENT' | 'PROVIDER',
   ) {
     if (tempPayload.type !== 'google_pending') {
       throw new UnauthorizedException('Token inválido');
     }
 
-    const email     = tempPayload.googleEmail.trim().toLowerCase();
-    const cleanUser = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const cleanIso  = countryIso.trim().toUpperCase();
+    const email = tempPayload.googleEmail.trim().toLowerCase();
+    const cleanUser = username
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+    const cleanIso = countryIso.trim().toUpperCase();
 
-    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
-    if (existingEmail) throw new ConflictException('El email ya está registrado');
+    const existingEmail = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    if (existingEmail)
+      throw new ConflictException('El email ya está registrado');
 
-    const existingUsername = await this.prisma.user.findUnique({ where: { username: cleanUser } });
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username: cleanUser },
+    });
     if (existingUsername) {
       const suggestions = await this.generateUsernameSuggestions(cleanUser);
-      throw new ConflictException({ message: 'El username ya está en uso', suggestions });
-    }
-
-    const country = await this.prisma.country.findUnique({ where: { iso: cleanIso } });
-    if (!country) throw new BadRequestException('El país seleccionado no existe');
-
-    if (role === 'PROVIDER') {
-      const user = await this.prisma.$transaction(async (tx) => {
-        return tx.user.create({
-          data: {
-            email,
-            username: cleanUser,
-            password: '',
-            role: Role.PROVIDER,
-            providerProfile: {
-              create: {
-                countryIso: cleanIso,
-                firstName:  tempPayload.firstName,
-                lastName:   tempPayload.lastName,
-              },
-            },
-          },
-          include: { providerProfile: true },
-        });
+      throw new ConflictException({
+        message: 'El username ya está en uso',
+        suggestions,
       });
-      const { password: _, ...userWithoutPass } = user;
-      return this.buildTokenResponse(userWithoutPass);
     }
 
-    // CLIENT (default)
+    const country = await this.prisma.country.findUnique({
+      where: { iso: cleanIso },
+    });
+    if (!country)
+      throw new BadRequestException('El país seleccionado no existe');
+
     const user = await this.prisma.$transaction(async (tx) => {
       return tx.user.create({
         data: {
           email,
+          phone: null,
           username: cleanUser,
           password: '',
-          role: Role.CLIENT,
-          clientProfile: {
+          profile: {
             create: {
               countryIso: cleanIso,
-              firstName:  tempPayload.firstName,
-              lastName:   tempPayload.lastName,
-              clientWallet: {
+              firstName: tempPayload.firstName,
+              lastName: tempPayload.lastName,
+              wallet: {
                 create: { currency: country.currency, balance: 0 },
               },
             },
           },
         },
         include: {
-          clientProfile: { include: { clientWallet: true } },
+          profile: { include: { wallet: true } },
         },
       });
     });
@@ -328,11 +309,14 @@ export class AuthService {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: { clientProfile: true, providerProfile: true },
+      include: { profile: true },
     });
 
     if (!user || !user.email) {
-      return { message: 'Si el correo está registrado, recibirás un código de recuperación.' };
+      return {
+        message:
+          'Si el correo está registrado, recibirás un código de recuperación.',
+      };
     }
 
     const code = randomInt(0, 1000000).toString().padStart(6, '0');
@@ -344,12 +328,17 @@ export class AuthService {
       data: { resetPasswordToken: codeHash, resetPasswordExpiry: expiresAt },
     });
 
-    const profile = user.clientProfile ?? user.providerProfile;
-    const name = profile ? `${profile.firstName} ${profile.lastName}` : 'Usuario';
+    const name = user.profile
+      ? `${user.profile.firstName ?? ''} ${user.profile.lastName ?? ''}`.trim() ||
+        'Usuario'
+      : 'Usuario';
 
     await this.mailService.sendPasswordResetEmail(user.email, name, code, 15);
 
-    return { message: 'Si el correo está registrado, recibirás un código de recuperación.' };
+    return {
+      message:
+        'Si el correo está registrado, recibirás un código de recuperación.',
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
@@ -380,7 +369,10 @@ export class AuthService {
     const valid = this.safeStringEqual(incomingHash, user.resetPasswordToken);
 
     if (!valid) {
-      const ttlMs = Math.max(user.resetPasswordExpiry.getTime() - Date.now(), 1000);
+      const ttlMs = Math.max(
+        user.resetPasswordExpiry.getTime() - Date.now(),
+        1000,
+      );
       await this.cache.set(attemptsKey, attempts + 1, ttlMs);
       throw new BadRequestException('Código inválido o expirado');
     }
@@ -388,7 +380,11 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpiry: null },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpiry: null,
+      },
     });
     await this.cache.del(attemptsKey);
 
@@ -397,11 +393,15 @@ export class AuthService {
 
   // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-  private buildTokenResponse(user: any) {
+  private buildTokenResponse(user: {
+    id: string;
+    email: string | null;
+    username: string;
+  }) {
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      username: user.username,
     };
     return {
       access_token: this.jwtService.sign(payload),
@@ -411,7 +411,9 @@ export class AuthService {
 
   private buildResetCodeHash(email: string, code: string) {
     const secret = process.env.RESET_PASSWORD_CODE_SECRET ?? '';
-    return createHash('sha256').update(`${email}:${code}:${secret}`).digest('hex');
+    return createHash('sha256')
+      .update(`${email}:${code}:${secret}`)
+      .digest('hex');
   }
 
   private safeStringEqual(a: string, b: string) {
@@ -421,12 +423,13 @@ export class AuthService {
     return timingSafeEqual(aBuf, bBuf);
   }
 
-  private async verifyGoogleIdToken(idToken: string) {
+  private async verifyGoogleIdToken(idToken: string): Promise<GoogleTokenInfo> {
     const url = new URL('https://oauth2.googleapis.com/tokeninfo');
     url.searchParams.set('id_token', idToken);
     const res = await fetch(url.toString());
-    if (!res.ok) throw new UnauthorizedException('Token de Google inválido o expirado');
-    const info = await res.json() as any;
+    if (!res.ok)
+      throw new UnauthorizedException('Token de Google inválido o expirado');
+    const info = (await res.json()) as GoogleTokenInfo;
     if (!info.sub) throw new UnauthorizedException('Token de Google inválido');
     return info;
   }

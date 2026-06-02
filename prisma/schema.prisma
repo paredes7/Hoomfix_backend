@@ -8,12 +8,6 @@ datasource db {
 
 // ─── ENUMS ────────────────────────────────────────────────────────────────────
 
-enum Role {
-  CLIENT   // Usuario que solicita servicios
-  PROVIDER // Técnico que ofrece servicios
-  ADMIN    // Administrador de la plataforma
-}
-
 enum ProviderStatus {
   PENDING  // Postulación enviada, esperando revisión del admin
   APPROVED // Admin aprobó — puede recibir trabajos
@@ -73,8 +67,7 @@ model Country {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clientProfiles   ClientProfile[]   // Country (1) → (N) ClientProfile: un país puede tener muchos clientes registrados
-  providerProfiles ProviderProfile[] // Country (1) → (N) ProviderProfile: un país puede tener muchos providers registrados
+  profiles         Profile[]         // Country (1) → (N) Profile: un país puede tener muchos usuarios registrados
   providerServices ProviderService[] // Country (1) → (N) ProviderService: un país tiene muchas especialidades de providers registradas
 
   @@map("Country") // Evita conflicto con la palabra reservada "Country" de Prisma  
@@ -126,10 +119,10 @@ model ServiceType {
 /// Los datos personales viven en ClientProfile o ProviderProfile según el rol.
 model User {
   id                  String    @id @default(uuid())
-  email               String?   @unique  // Correo para iniciar sesión (obligatorio para clientes, opcional para providers)
-  username            String    @unique  // Generado automáticamente desde el email (solo letras y números)
+  email               String?   @unique  // Correo para iniciar sesión — opcional si se registra con teléfono
+  phone               String?   @unique  // Teléfono para iniciar sesión (ej: +59170012345) — opcional si se registra con email
+  username            String    @unique  // Elegido por el usuario al registrarse — solo letras y números
   password            String             // Hash bcrypt de la contraseña
-  role                Role      @default(CLIENT)  // Define si es cliente, provider o admin
   isActive            Boolean   @default(true)    // false = cuenta bloqueada por el admin
   fcmToken            String?            // Token Firebase para notificaciones push
   resetPasswordToken  String?            // Hash del código de recuperación de contraseña
@@ -137,9 +130,8 @@ model User {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  clientProfile    ClientProfile?    // User (1) → (1) ClientProfile: datos personales si es CLIENT
-  providerProfile  ProviderProfile?  // User (1) → (1) ProviderProfile: datos personales si es PROVIDER
-  providerServices ProviderService[] // User (1) → (N) ProviderService: un provider puede tener múltiples especialidades
+  profile          Profile?          // User (1) → (1) Profile: datos personales y wallet del usuario
+  providerServices ProviderService[] // User (1) → (N) ProviderService: especialidades en las que el usuario actúa como provider
   sentMessages     Message[]         @relation("SentMessages")   // User (1) → (N) Message: mensajes enviados en los chats de sus servicios
   clientServices   Service[]         @relation("ClientServices") // User (1) → (N) Service: servicios solicitados si es CLIENT
   ratings          Rating[]          @relation("ClientRatings")  // User (1) → (N) Rating: calificaciones dadas a providers si es CLIENT
@@ -156,11 +148,11 @@ model User {
 
 
 /// Datos personales del cliente. Se crea automáticamente al registrarse como CLIENT.
-/// Tiene su propio ClientWallet para pagar servicios.
-model ClientProfile {
+/// Tiene su propio Wallet para pagar servicios.
+model Profile {
   id              String    @id @default(uuid())
   userId          String    @unique
-  countryIso      String              // FK a Country — define la moneda del ClientWallet. Se elige al registrarse y no cambia.
+  countryIso      String              // FK a Country — define la moneda del Wallet. Se elige al registrarse y no cambia.
   firstName       String?             // Nombre del cliente
   lastName        String?             // Apellido del cliente
   avatar          String?             // URL pública de la foto de perfil en Cloudinary
@@ -170,45 +162,24 @@ model ClientProfile {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  clientWallet   ClientWallet?   // ClientProfile (1) → (1) ClientWallet: cada cliente tiene una sola billetera para pagar servicios
-  contacts Contact[] // ClientProfile (1) → (N) Contact: un cliente puede tener múltiples números de contacto
-  user           User            @relation(fields: [userId], references: [id])      // ClientProfile (N) → (1) User: este perfil pertenece a un solo usuario
-  country        Country         @relation(fields: [countryIso], references: [iso]) // ClientProfile (N) → (1) Country: define la moneda del wallet del cliente
+  wallet   Wallet?   // Profile (1) → (1) Wallet: billetera del usuario para pagar servicios
+  contacts Contact[] // Profile (1) → (N) Contact: números de contacto del usuario (máx 3)
+  user     User      @relation(fields: [userId],     references: [id])  // Profile (N) → (1) User: este perfil pertenece a un solo usuario
+  country  Country   @relation(fields: [countryIso], references: [iso]) // Profile (N) → (1) Country: define la moneda del wallet
 
-  @@map("ClientProfile") // Evita conflicto con la palabra reservada "Profile" de Prisma
-}
-
-/// Datos personales del provider. Un solo perfil sin importar cuántas especialidades tenga.
-/// Se crea al registrarse como PROVIDER. Las especialidades viven en ProviderService.
-model ProviderProfile {
-  id             String    @id @default(uuid())
-  userId         String    @unique
-  countryIso     String              // FK a Country — identifica de qué país es el provider. Se elige al registrarse.
-  firstName      String?             // Nombre del provider
-  lastName       String?             // Apellido del provider
-  avatar         String?             // URL pública de la foto de perfil en Cloudinary
-  avatarPublicId String?             // public_id de Cloudinary para poder reemplazar o eliminar la imagen
-  referralCode   String?   @unique   // Código único para referir a otros usuarios
-  lastLoginAt    DateTime?           // Último inicio de sesión
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id])           // ProviderProfile (N) → (1) User: este perfil pertenece a un solo usuario
-  country Country @relation(fields: [countryIso], references: [iso])      // ProviderProfile (N) → (1) Country: identifica el país del provider
-
-  @@map("ProviderProfile") // Evita conflicto con la palabra reservada "Profile" de Prisma
+  @@map("Profile") // Evita conflicto con la palabra reservada "Profile" de Prisma
 }
 
 /// Números de contacto del cliente. Un cliente puede tener múltiples números.
 /// Separado de ClientProfile para permitir varios registros por cliente.
 model Contact {
-  id              String   @id @default(uuid())
-  clientProfileId String             // Perfil del cliente al que pertenece este número
-  phone           String   @unique   // Número de teléfono único en la plataforma
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String   @id @default(uuid())
+  profileId String             // FK a Profile — número pertenece a un solo usuario
+  phone     String   @unique   // Número de teléfono único en toda la plataforma
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id]) // Contact (N) → (1) ClientProfile: este número pertenece a un solo cliente
+  profile Profile @relation(fields: [profileId], references: [id]) // Contact (N) → (1) Profile: este número pertenece a un solo usuario
   
   @@map("Contact") // Evita conflicto con la palabra reservada "Contact" de Prisma  
 }
@@ -498,18 +469,18 @@ model ProviderDocument {
 
 /// Billetera del cliente. Solo para pagar servicios. Recibe recargas aprobadas por el admin.
 /// La moneda se define según el país del cliente (BOB, USD, PEN, etc.).
-model ClientWallet {
-  id              String   @id @default(uuid())
-  clientProfileId String   @unique         // Cliente dueño de esta billetera
-  currency        String                   // Moneda fija del wallet (ej: BOB, USD, PEN) — se asigna al registrarse y nunca cambia
-  balance         Float    @default(0)     // Saldo disponible para pagar servicios
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model Wallet {
+  id        String   @id @default(uuid())
+  profileId String   @unique         // FK a Profile — billetera pertenece a un solo usuario
+  currency  String                   // Moneda fija del wallet (ej: BOB, USD, PEN) — se asigna al registrarse y nunca cambia
+  balance   Float    @default(0)     // Saldo disponible para pagar servicios
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id]) // ClientWallet (1) → (1) ClientProfile: esta billetera pertenece a un solo cliente
-  recharges     Recharge[]                                                            // ClientWallet (1) → (N) Recharge: una billetera puede tener muchas recargas en su historial
+  profile   Profile    @relation(fields: [profileId], references: [id]) // Wallet (1) → (1) Profile: esta billetera pertenece a un solo usuario
+  recharges Recharge[]                                                   // Wallet (1) → (N) Recharge: historial de recargas de saldo
   
-  @@map("ClientWallet") // Evita conflicto con la palabra reservada "Wallet" de Prisma
+  @@map("Wallet") // Evita conflicto con la palabra reservada "Wallet" de Prisma
 }
 
 /// Billetera del provider por especialidad. Acumula ganancias de servicios completados.
@@ -547,7 +518,7 @@ model Package {
 }
 
 /// Registro de cada recarga de saldo que hace un cliente.
-/// Flujo: cliente elige Package → Recharge (PENDING) → admin aprueba → ClientWallet.balance += package.amountUsd × ExchangeRate.rate
+/// Flujo: cliente elige Package → Recharge (PENDING) → admin aprueba → Wallet.balance += package.amountUsd × ExchangeRate.rate
 model Recharge {
   id             String         @id @default(uuid())
   clientWalletId String                           // Wallet del cliente que recarga
@@ -556,7 +527,7 @@ model Recharge {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  clientWallet ClientWallet @relation(fields: [clientWalletId], references: [id]) // Recharge (N) → (1) ClientWallet: esta recarga acredita saldo a una sola billetera de cliente
+  clientWallet Wallet @relation(fields: [clientWalletId], references: [id]) // Recharge (N) → (1) Wallet: esta recarga acredita saldo a una sola billetera de cliente
   package      Package      @relation(fields: [packageId], references: [id])      // Recharge (N) → (1) Package: esta recarga usa un solo paquete como referencia de monto
 
   @@map("Recharge") // Evita conflicto con la palabra reservada "Recharge" de Prisma
