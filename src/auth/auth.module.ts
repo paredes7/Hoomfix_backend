@@ -5,6 +5,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { AuthRegisterService } from './services/auth-register.service';
+import { AuthLoginService } from './services/auth-login.service';
+import { AuthPasswordService } from './services/auth-password.service';
+import { AuthUsernameService } from './services/auth-username.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { MailModule } from '../mail/mail.module';
 
@@ -23,7 +27,14 @@ import { MailModule } from '../mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    AuthRegisterService,
+    AuthLoginService,
+    AuthPasswordService,
+    AuthUsernameService,
+    JwtStrategy,
+  ],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

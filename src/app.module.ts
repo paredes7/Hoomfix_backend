@@ -7,6 +7,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MailModule } from './mail/mail.module';
 import { ProfileModule } from './profile/profile.module';
+import { CountryModule } from './country/country.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ProfileModule } from './profile/profile.module';
     NotificationsModule,
     MailModule,
     ProfileModule,
+    CountryModule,
   ],
   controllers: [],
   providers: [],

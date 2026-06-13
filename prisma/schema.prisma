@@ -124,9 +124,10 @@ model User {
   username            String    @unique  // Elegido por el usuario al registrarse — solo letras y números
   password            String             // Hash bcrypt de la contraseña
   isActive            Boolean   @default(true)    // false = cuenta bloqueada por el admin
-  fcmToken            String?            // Token Firebase para notificaciones push
+  expoPushToken       String?            // Token de Expo para enviar notificaciones push al dispositivo del usuario
   resetPasswordToken  String?            // Hash del código de recuperación de contraseña
   resetPasswordExpiry DateTime?          // Fecha de expiración del código de recuperación
+  isOnboardingCompleted Boolean   @default(false)    // true = completó el onboarding inicial
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -142,6 +143,8 @@ model User {
   reelLikes        ReelLike[]        // User (1) → (N) ReelLike: likes dados a reels de providers
   reelComments     ReelComment[]     // User (1) → (N) ReelComment: comentarios escritos en reels de providers
   savedBy          SavedPost[]      // User (1) → (N) SavedPost: publicaciones guardadas como favoritas por el usuario
+  followers        Follow[]         @relation("Following") // User (1) → (N) Follow: usuarios que siguen a este provider
+  following        Follow[]         @relation("Follower")  // User (1) → (N) Follow: providers que este usuario sigue
 
   @@map("User") // Evita conflicto con la palabra reservada "User" de Prisma
 }
@@ -286,6 +289,21 @@ model PostMedia {
 
   @@map("PostMedia") // Evita conflicto con la palabra reservada "Media" de Prisma
 }
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String   // usuario que sigue
+  followingId String   // usuario al que sigue (el provider)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  follower  User @relation("Follower",  fields: [followerId],  references: [id]) // Follow (N) → (1) User: este follow fue hecho por un solo usuario
+  following User @relation("Following", fields: [followingId], references: [id]) // Follow (N) → (1) User: este follow es hacia un solo usuario
+
+  @@unique([followerId, followingId])
+  @@map("Follow") // Evita conflicto con la palabra reservada "Follow" de Prisma
+}
+
 
 model PostLike {
   id        String   @id @default(uuid())

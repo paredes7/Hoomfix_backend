@@ -61,11 +61,10 @@ export class AuthController {
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
     }
-    return this.authService.completeGoogleRegistration(
-      payload,
-      body.username,
-      body.countryIso,
-    );
+    return this.authService.completeGoogleRegistration(payload, {
+      username: body.username,
+      countryIso: body.countryIso,
+    });
   }
 
   @Post('forgot-password')
