@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SentryModule, SentryGlobalFilter } from '@sentry/nestjs/setup';
+import { APP_FILTER } from '@nestjs/core';
+import { DebugModule } from './debug/debug.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
@@ -11,6 +14,7 @@ import { CountryModule } from './country/country.module';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -23,8 +27,14 @@ import { CountryModule } from './country/country.module';
     MailModule,
     ProfileModule,
     CountryModule,
+    DebugModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+    },
+  ],
 })
 export class AppModule {}
