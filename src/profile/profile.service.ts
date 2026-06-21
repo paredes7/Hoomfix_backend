@@ -10,6 +10,7 @@ import { CompleteProfileDto } from './dto/complete-profile.dto';
 export class ProfileService {
   constructor(private readonly prisma: PrismaService) { }
 
+  // METODO PARA COMPLETAR EL PERFIL DEL USUARIO, SE PERMITE AGREGAR HASTA 3 NUMEROS DE CONTACTO
   async completeProfile(userId: string, dto: CompleteProfileDto) {
     const profile = await this.prisma.profile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Perfil no encontrado');
