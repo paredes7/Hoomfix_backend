@@ -8,11 +8,13 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleCompleteDto } from './dto/google-complete.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
     private readonly registerService: AuthRegisterService,
     private readonly loginService: AuthLoginService,
     private readonly passwordService: AuthPasswordService,
@@ -82,18 +84,27 @@ export class AuthService {
   }
 
   // MÉTODO AUXILIAR PARA GENERAR JWT Y ESTRUCTURA DE RESPUESTA
-  private buildTokenResponse(user: {
-    id: string;
-    email: string | null;
-    username: string;
-  }) {
+  private async buildTokenResponse(user: Record<string, any>) {
+    const { isOnboardingCompleted, ...rest } = user;
+
+    const adminRecord = await this.prisma.admin.findUnique({
+      where: { userId: user.id },
+    });
+
+    const isAdmin = !!adminRecord;
+
     return {
       access_token: this.jwtService.sign({
         sub: user.id,
         email: user.email,
         username: user.username,
+        isAdmin,
       }),
-      user,
+      user: {
+        ...rest,
+        isOnboardingComplete: isOnboardingCompleted ?? false,
+        isAdmin,
+      },
     };
   }
 }

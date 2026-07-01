@@ -16,13 +16,7 @@ export class CloudinaryService {
         if (!cloudName || !apiKey || !apiSecret)
           throw new Error('Invalid CLOUDINARY_URL');
 
-        cloudinary.config({
-          cloud_name: cloudName,
-          api_key: apiKey,
-          api_secret: apiSecret,
-          secure: true,
-        });
-
+        cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true });
         return;
       } catch {
         throw new InternalServerErrorException('CLOUDINARY_URL inválida.');
@@ -39,50 +33,21 @@ export class CloudinaryService {
       );
     }
 
-    cloudinary.config({
-      cloud_name: cloudName,
-      api_key: apiKey,
-      api_secret: apiSecret,
-      secure: true,
-    });
+    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true });
   }
 
-  async uploadImage(params: {
-    file: Express.Multer.File;
-    folder: string;
-    publicId?: string;
-  }): Promise<{ secureUrl: string; publicId: string }> {
-    const { file, folder, publicId } = params;
-
-    if (!file.mimetype.startsWith('image/')) {
-      throw new BadRequestException('Solo se permiten imágenes.');
-    }
-
-    const pid = publicId ?? `img_${Date.now()}`;
-
-    return new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        { folder, public_id: pid, resource_type: 'image' },
-        (error, result) => {
-          if (error || !result?.secure_url) {
-            return reject(new InternalServerErrorException('Error al subir imagen a Cloudinary.'));
-          }
-          resolve({ secureUrl: result.secure_url, publicId: result.public_id });
-        },
-      );
-      uploadStream.end(file.buffer);
-    });
-  }
-
+  // SUBE UN ARCHIVO (IMAGEN O PDF) A CLOUDINARY
   async uploadFile(params: {
     file: Express.Multer.File;
     folder: string;
     publicId?: string;
-  }): Promise<{ secureUrl: string; publicId: string }> {
+  }): Promise<{ secureUrl: string; publicId: string; resourceType: 'image' | 'raw' }> {
     const { file, folder, publicId } = params;
 
-    const isImage = file.mimetype.startsWith('image/');
-    const isPdf = file.mimetype === 'application/pdf';
+    const ext = file.originalname.split('.').pop()?.toLowerCase() ?? '';
+    const isImage = file.mimetype.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+    const isPdf = file.mimetype === 'application/pdf' || ext === 'pdf';
+
     if (!isImage && !isPdf) {
       throw new BadRequestException('Tipo de archivo no soportado. Solo imágenes o PDF.');
     }
@@ -97,14 +62,15 @@ export class CloudinaryService {
           if (error || !result?.secure_url) {
             return reject(new InternalServerErrorException('Error al subir archivo a Cloudinary.'));
           }
-          resolve({ secureUrl: result.secure_url, publicId: result.public_id });
+          resolve({ secureUrl: result.secure_url, publicId: result.public_id, resourceType });
         },
       );
       uploadStream.end(file.buffer);
     });
   }
 
-  async deleteFile(publicId: string, resourceType: 'image' | 'video' | 'raw' = 'image'): Promise<void> {
+  // ELIMINA UN ARCHIVO DE CLOUDINARY
+  async deleteFile(publicId: string, resourceType: 'image' | 'raw' = 'image'): Promise<void> {
     try {
       await cloudinary.uploader.destroy(publicId, { invalidate: true, resource_type: resourceType });
     } catch {

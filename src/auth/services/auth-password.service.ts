@@ -23,6 +23,7 @@ export class AuthPasswordService {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
+  // METODO PARA ENVIAR UN CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA AL EMAIL DEL USUARIO, SI EL EMAIL ESTÁ REGISTRADO
   async forgotPassword(dto: ForgotPasswordDto) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
@@ -61,6 +62,7 @@ export class AuthPasswordService {
     };
   }
 
+  // METODO PARA RESTAURAR LA CONTRASEÑA DEL USUARIO, SE VERIFICA EL CÓDIGO DE RECUPERACIÓN Y SE ACTUALIZA LA CONTRASEÑA
   async resetPassword(dto: ResetPasswordDto) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
@@ -113,6 +115,7 @@ export class AuthPasswordService {
     return { message: 'Contraseña actualizada correctamente' };
   }
 
+  // METODO PARA GENERAR UN HASH DEL CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA, SE UTILIZA EL EMAIL DEL USUARIO Y UNA CLAVE SECRETA PARA GENERAR EL HASH
   private buildCodeHash(email: string, code: string): string {
     const secret = process.env.RESET_PASSWORD_CODE_SECRET ?? '';
     return createHash('sha256')
@@ -120,6 +123,7 @@ export class AuthPasswordService {
       .digest('hex');
   }
 
+  // METODO PARA COMPARAR DOS HASHES DE FORMA SEGURA, EVITANDO ATAQUES DE TIEMPO
   private safeEqual(a: string, b: string): boolean {
     const aBuf = Buffer.from(a);
     const bBuf = Buffer.from(b);

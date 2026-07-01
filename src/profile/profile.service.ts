@@ -21,6 +21,11 @@ export class ProfileService {
         data: { firstName: dto.firstName, lastName: dto.lastName },
       });
 
+      await tx.user.update({
+        where: { id: userId },
+        data: { isOnboardingCompleted: true },
+      });
+
       if (dto.phones && dto.phones.length > 0) {
         const existing = await tx.contact.findMany({
           where: {
@@ -46,6 +51,7 @@ export class ProfileService {
         phone: true,
         username: true,
         isActive: true,
+        isOnboardingCompleted: true,
         profile: {
           select: {
             id: true,
@@ -55,6 +61,7 @@ export class ProfileService {
             avatar: true,
             contacts: { select: { id: true, phone: true } },
             wallet: { select: { currency: true, balance: true } },
+            country: { select: { iso: true, name: true } },
           },
         },
       },

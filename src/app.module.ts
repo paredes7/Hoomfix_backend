@@ -11,6 +11,9 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { MailModule } from './mail/mail.module';
 import { ProfileModule } from './profile/profile.module';
 import { CountryModule } from './country/country.module';
+import { ProviderServiceModule } from './providerService/providerService.module';
+import { AdminModule } from './admin/admin.module';
+import { ServiceTypeModule } from './serviceType/serviceType.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { CountryModule } from './country/country.module';
     ProfileModule,
     CountryModule,
     DebugModule,
+    ProviderServiceModule,
+    AdminModule,
+    ServiceTypeModule,
   ],
   controllers: [],
   providers: [

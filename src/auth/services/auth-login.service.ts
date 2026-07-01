@@ -19,6 +19,7 @@ export class AuthLoginService {
     private readonly usernameService: AuthUsernameService,
   ) {}
 
+  // METODO PARA INICIAR SESIÓN CON EMAIL, USERNAME O PHONE, SE VERIFICA SI EL USUARIO EXISTE Y SI LA CONTRASEÑA ES CORRECTA
   async login(dto: LoginDto) {
     const identifier = dto.identifier.trim().toLowerCase();
 
@@ -30,7 +31,15 @@ export class AuthLoginService {
           { phone: identifier },
         ],
       },
-      include: { profile: { include: { wallet: true } } },
+      include: {
+        profile: {
+          include: {
+            wallet: true,
+            contacts: true,
+            country: { select: { iso: true, name: true } },
+          },
+        },
+      },
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.password))) {
@@ -53,6 +62,7 @@ export class AuthLoginService {
     return user;
   }
 
+  // METODO PARA INICIAR SESIÓN CON GOOGLE, SE VERIFICA SI EL USUARIO EXISTE Y SI EL EMAIL ESTÁ VERIFICADO
   async loginWithGoogle(tokenInfo: GoogleTokenInfo) {
     if (tokenInfo.email_verified !== 'true') {
       throw new UnauthorizedException('Debes verificar tu email en Google');
@@ -74,6 +84,7 @@ export class AuthLoginService {
     return user;
   }
 
+  // METODO PARA VERIFICAR EL TOKEN DE GOOGLE, SE HACE UNA PETICIÓN A LA API DE GOOGLE PARA OBTENER LA INFORMACIÓN DEL USUARIO
   async verifyGoogleToken(idToken: string): Promise<GoogleTokenInfo> {
     const url = new URL('https://oauth2.googleapis.com/tokeninfo');
     url.searchParams.set('id_token', idToken);
@@ -85,6 +96,7 @@ export class AuthLoginService {
     return info;
   }
 
+  // METODO PARA SUGERIR UN NOMBRE DE USUARIO CUANDO EL USUARIO SE REGISTRA CON GOOGLE
   async suggestedUsername(email: string): Promise<string> {
     return this.usernameService.generate(email);
   }

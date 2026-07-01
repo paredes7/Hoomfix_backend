@@ -12,6 +12,7 @@ export class AuthUsernameService {
       .replace(/[^a-z0-9]/g, '');
   }
 
+  // METODO PARA GENERAR UN NOMBRE DE USUARIO ÚNICO A PARTIR DEL EMAIL O TELÉFONO DEL USUARIO, SI YA EXISTE SE AGREGA UN NÚMERO AL FINAL
   async generate(emailOrPhone: string): Promise<string> {
     const base = this.buildBase(emailOrPhone);
     let username = base;
@@ -23,6 +24,7 @@ export class AuthUsernameService {
     return username;
   }
 
+  // METODO PARA GENERAR SUGERENCIAS DE NOMBRES DE USUARIO A PARTIR DE UNA BASE
   async suggestions(base: string): Promise<string[]> {
     const candidates = [`${base}1`, `${base}2`, `${base}_ok`];
     const results: string[] = [];
